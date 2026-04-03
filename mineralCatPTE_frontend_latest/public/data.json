@@ -1,0 +1,50 @@
+{
+  "speaking": {
+    "id": "speaking",
+    "title": "Speaking Practice",
+    "count": 580,
+    "label": "Speaking Question",
+    "icon": "👤",
+    "details": [
+      "AI speech analysis for fluency & pronunciation",
+      "Repeated Sentence, Describe Image, and Retell Lecture exercise AI speech analysis for fluency & pronunciation",
+      "Repeated Sentence, Describe Image, and Retell Lecture exercises"
+    ]
+  },
+  "writing": {
+    "id": "writing",
+    "title": "Writing Practice",
+    "count": 420,
+    "label": "Writing Question",
+    "icon": "✏️",
+    "details": [
+      "Essay writing with automated scoring",
+      "Summarize Written Text exercises with feedback",
+      "Grammar and vocabulary enhancement tools"
+    ]
+  },
+  "reading": {
+    "id": "reading",
+    "title": "Reading Practice",
+    "count": 350,
+    "label": "Reading Question",
+    "icon": "📖",
+    "details": [
+      "Multiple choice reading comprehension",
+      "Fill in the blanks with contextual understanding",
+      "Reading and writing fill in the blanks practice"
+    ]
+  },
+  "listening": {
+    "id": "listening",
+    "title": "Listening Practice",
+    "count": 290,
+    "label": "Listening Question",
+    "icon": "🔊",
+    "details": [
+      "Audio comprehension with native speakers",
+      "Summarize spoken text exercises",
+      "Multiple choice listening with real exam scenarios"
+    ]
+  }
+}

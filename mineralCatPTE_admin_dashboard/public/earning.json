@@ -1,0 +1,151 @@
+{
+  "earnings": [
+    {
+      "id": 1234,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 510.0
+    },
+    {
+      "id": 1235,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.08
+    },
+    {
+      "id": 1236,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.7
+    },
+    {
+      "id": 1237,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.01
+    },
+    {
+      "id": 1238,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.11
+    },
+    {
+      "id": 1239,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.10
+    },
+    {
+      "id": 1240,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1241,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1242,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1239,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.10
+    },
+    {
+      "id": 1240,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1241,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1242,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1239,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.10
+    },
+    {
+      "id": 1240,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1241,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1242,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1239,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.10
+    },
+    {
+      "id": 1240,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1241,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    },
+    {
+      "id": 1242,
+      "email": "roki123@gmail.com",
+      "accountNumber": "**** **** **** 4852",
+      "timeDate": "4:15 PM, 25/02/24",
+      "amount": 509.0
+    }
+  ]
+}

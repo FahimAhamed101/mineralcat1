@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".", // baseUrl হিসেবে প্রজেক্টের রুট
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@public/*": [
+        "./public/*"
+      ]
+      // @ আলিয়াসকে src ডিরেক্টরি নির্দেশ করবে
+    },
+    "target": "ES2017",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noEmit": true,
+    "incremental": true,
+    "module": "esnext",
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "strictNullChecks": true
+  },
+  "include": [
+    "**/*.js", // TypeScript এর কিছু type ডিফিনিশন
+    "**/*.jsx", // .next ফোল্ডারও ইঙ্কলুড করতে হবে
+    ".next/types/**/*.js", // সব JavaScript ফাইল
+    "next-env.d.ts" // সব JSX ফাইল
+    ,
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules" // node_modules এক্সক্লুড করা হবে
+  ]
+}

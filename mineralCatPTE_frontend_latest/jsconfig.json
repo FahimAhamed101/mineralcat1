@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",  // baseUrl হিসেবে প্রজেক্টের রুট
+    "paths": {
+      "@/*": ["./src/*"],
+      "@public/*": ["./public/*"]
+      // @ আলিয়াসকে src ডিরেক্টরি নির্দেশ করবে
+    }
+  },
+  "include": [
+    "next-env.d.ts",  // TypeScript এর কিছু type ডিফিনিশন
+    ".next/types/**/*.js",  // .next ফোল্ডারও ইঙ্কলুড করতে হবে
+    "**/*.js",  // সব JavaScript ফাইল
+    "**/*.jsx"  // সব JSX ফাইল
+  ],
+  "exclude": [
+    "node_modules"  // node_modules এক্সক্লুড করা হবে
+  ]
+}
+
