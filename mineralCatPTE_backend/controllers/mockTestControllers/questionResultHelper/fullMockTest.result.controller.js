@@ -258,6 +258,26 @@ function buildWordCounts(wordScoreList = [], goodMin = 90, averageMin = 60) {
   return { goodWords, averageWords, badWords };
 }
 
+function getScriptedAccuracyFromWordScores(wordScoreList = [], expectedWordCount = 0) {
+  const qualityScores = wordScoreList
+    .map(getWordQualityScore)
+    .filter((score) => Number.isFinite(score));
+
+  if (!qualityScores.length) {
+    return null;
+  }
+
+  const averageQuality = average(qualityScores);
+  const reasonablyCorrectCount = qualityScores.filter((score) => score >= 55).length;
+  const normalizedWordCount = Math.max(
+    1,
+    Number.isFinite(Number(expectedWordCount)) ? Number(expectedWordCount) : qualityScores.length
+  );
+
+  const coverageAccuracy = (reasonablyCorrectCount / normalizedWordCount) * 100;
+  return clamp(Math.round(average([averageQuality, coverageAccuracy])), 0, 100);
+}
+
 function getFirstNumericValue(...values) {
   for (const value of values) {
     const numericValue = Number(value);
@@ -303,14 +323,26 @@ function mapScriptedSpeechResponse(fullResponse, expectedText, goodWordMin = 90)
     ? textScore.word_score_list
     : [];
 
-  const totalWords = toNumber(
-    fluencyMetrics.word_count,
-    getExpectedWordCount(expectedText)
+  const expectedWordCount = getExpectedWordCount(expectedText);
+  const totalWords = Math.max(
+    0,
+    Math.round(
+      toNumber(
+        fluencyMetrics.word_count,
+        expectedWordCount || wordScoreList.length
+      )
+    )
   );
-  const correctWords = toNumber(fluencyMetrics.correct_word_count, 0);
-  const readingAccuracy = totalWords > 0
-    ? Math.round((correctWords / totalWords) * 100)
-    : 0;
+  const explicitCorrectWords = getFirstNumericValue(fluencyMetrics.correct_word_count);
+  const explicitAccuracy =
+    explicitCorrectWords !== null && totalWords > 0
+      ? clamp(Math.round((explicitCorrectWords / totalWords) * 100), 0, 100)
+      : null;
+  const fallbackAccuracy = getScriptedAccuracyFromWordScores(
+    wordScoreList,
+    totalWords || expectedWordCount || wordScoreList.length
+  );
+  const readingAccuracy = explicitAccuracy ?? fallbackAccuracy ?? 0;
 
   const pronunciation = toNumber(
     pteScore.pronunciation,
@@ -523,8 +555,12 @@ async function speakingevaluateRepeatSentenceResult({ userId, questionId, userFi
   await savePractice(userId, question);
 
   const mappedResponse = mapScriptedSpeechResponse(finalResponse, expectedText, 85);
-  const contentRelevance = Number((mappedResponse.readingScore / 100).toFixed(2));
-  const listeningScore = mappedResponse.readingScore;
+  const listeningScore = clamp(
+    Math.round(toNumber(mappedResponse.readingScore, 0)),
+    0,
+    100
+  );
+  const contentRelevance = Number((listeningScore / 100).toFixed(2));
 
   return {
     speakingScore: mappedResponse.speakingScore,

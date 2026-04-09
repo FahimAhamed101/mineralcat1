@@ -62,6 +62,26 @@ function getRoundedScore(value) {
   return Number.isFinite(numericValue) ? Math.round(numericValue) : null;
 }
 
+function getDerivedSectionScore(section) {
+  const directScore = getRoundedScore(section?.score);
+  if (directScore !== null) {
+    return directScore;
+  }
+
+  const taskScores = Array.isArray(section?.tasks)
+    ? section.tasks
+        .map((task) => getRoundedScore(task?.score))
+        .filter((score) => Number.isFinite(score))
+    : [];
+
+  if (!taskScores.length) {
+    return null;
+  }
+
+  const total = taskScores.reduce((sum, score) => sum + score, 0);
+  return Math.round(total / taskScores.length);
+}
+
 function getInitials(name) {
   const parts = String(name || "")
     .trim()
@@ -93,7 +113,10 @@ function formatDuration(duration) {
     return "Not available";
   }
 
-  if (typeof duration === "string" && duration.trim() === "[object Object]") {
+  if (
+    typeof duration === "string" &&
+    duration.replace(/\s+/g, " ").trim().includes("[object Object]")
+  ) {
     return "Not available";
   }
 
@@ -376,7 +399,6 @@ export default function MockScoreReportModal({
   const candidateId = candidate._id
     ? String(candidate._id).slice(-8).toUpperCase()
     : "N/A";
-  const overallScore = getRoundedScore(resultData.totalScore);
   const reportType = sectionType
     ? `${testMode || "Mock Test"} / ${formatSectionType(sectionType)}`
     : testMode || "Mock Test";
@@ -385,16 +407,11 @@ export default function MockScoreReportModal({
     ? Number(resultData.completedTaskCount)
     : 0;
 
-  const sectionScores = SECTION_STYLES.map((section) => ({
-    ...section,
-    score: getRoundedScore(resultData[section.key]),
-  }));
-
   const sections = Array.isArray(resultData.sections)
     ? resultData.sections.map((section) => ({
         ...section,
         style: getSectionStyle(section.key),
-        score: getRoundedScore(section.score),
+        score: getDerivedSectionScore(section),
         taskCount: Number.isFinite(Number(section.taskCount))
           ? Number(section.taskCount)
           : Array.isArray(section.tasks)
@@ -403,6 +420,24 @@ export default function MockScoreReportModal({
         tasks: Array.isArray(section.tasks) ? section.tasks : [],
       }))
     : [];
+
+  const sectionScoreMap = Object.fromEntries(
+    sections.map((section) => [section.key, section.score])
+  );
+
+  const sectionScores = SECTION_STYLES.map((section) => ({
+    ...section,
+    score:
+      getRoundedScore(resultData[section.key]) ??
+      getRoundedScore(sectionScoreMap[section.key]),
+  }));
+
+  const overallScoreParts = sectionScores
+    .map((section) => section.score)
+    .filter((score) => Number.isFinite(score));
+  const overallScore = overallScoreParts.length
+    ? overallScoreParts.reduce((sum, score) => sum + score, 0)
+    : getRoundedScore(resultData.totalScore);
 
   const populatedSections = DETAIL_SECTION_ORDER.map((sectionKey) =>
     sections.find((section) => section.key === sectionKey)

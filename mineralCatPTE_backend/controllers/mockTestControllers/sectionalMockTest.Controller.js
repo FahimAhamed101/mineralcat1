@@ -11,10 +11,12 @@ const fs = require('fs');
 const FormData = require("form-data");
 const ExpressError = require("../../utils/ExpressError");
 const {
+    getAssessmentAttemptDetails,
     getMockQuestionScore,
     hasAttemptForAttemptId,
     isAnsweredMockSubmission,
     normalizeAttemptId,
+    persistMockTestAttemptWithRetry,
     parseSerializedRequestData,
 } = require("./questionResultHelper/mockTestSubmission.helper");
 const {
@@ -223,6 +225,7 @@ module.exports.mockTestResult = async (req, res, next) => {
             throw new ExpressError(400, scoreData.error);
         }
         const score = getMockQuestionScore(question.subtype, scoreData);
+        const attemptAssessmentDetails = getAssessmentAttemptDetails(scoreData);
 
 
         const attempt = {
@@ -230,40 +233,19 @@ module.exports.mockTestResult = async (req, res, next) => {
             questionSubtype: question.subtype,
             attemptId,
             score,
+            assessmentScore: attemptAssessmentDetails.assessmentScore,
+            assessmentMaxScore: attemptAssessmentDetails.assessmentMaxScore,
+            skillScores: attemptAssessmentDetails.skillScores,
             submittedAt: new Date(),
         };
 
-        if (!mockTestResult) {
-            // Create new doc with first result entry
-            mockTestResult = await mockTestResultModel.create({
-                user: userId,
-                mockTest: mockTestId,
-                results: [
-                    {
-                        type: question.type,
-                        averageScore: score,
-                        attempts: [attempt],
-                    },
-                ],
-            });
-        } else {
-            // Check if a result entry for this question type exists
-            const existingResult = mockTestResult.results.find(r => r.type === question.type);
-            if (existingResult) {
-                existingResult.attempts.push(attempt);
-                // Recalculate averageScore
-                const total = existingResult.attempts.reduce((acc, a) => acc + a.score, 0);
-                existingResult.averageScore = total / existingResult.attempts.length;
-            } else {
-                // Add new result entry for this type
-                mockTestResult.results.push({
-                    type: question.type,
-                    averageScore: score,
-                    attempts: [attempt],
-                });
-            }
-            await mockTestResult.save();
-        }
+        await persistMockTestAttemptWithRetry({
+            mockTestResultModel,
+            userId,
+            mockTestId,
+            questionType: question.type,
+            attempt,
+        });
 
         return res.status(200).json({
             success: true,
@@ -300,6 +282,10 @@ module.exports.getFormattedMockTestResult = asyncWrapper(async (req, res) => {
     const { mockTestId } = req.params;
     const userId = req.user._id;
     const attemptId = normalizeAttemptId(req.query.attemptId);
+    const attemptStartedAt = Number(req.query.attemptStartedAt);
+    const startedAfter = Number.isFinite(attemptStartedAt) && attemptStartedAt > 0
+        ? attemptStartedAt
+        : null;
 
     if (!mongoose.Types.ObjectId.isValid(mockTestId)) {
         return res.status(400).json({ success: false, message: 'Invalid mock test ID' });
@@ -323,6 +309,7 @@ module.exports.getFormattedMockTestResult = asyncWrapper(async (req, res) => {
 
     const formattedResult = await buildFormattedMockTestResult(mockTestResultDoc, {
         attemptId,
+        startedAfter,
         referenceDate: Date.now(),
     });
 

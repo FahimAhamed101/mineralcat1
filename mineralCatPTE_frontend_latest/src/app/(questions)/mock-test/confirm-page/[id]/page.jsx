@@ -256,6 +256,7 @@ const ReadAloudComponent = ({ question, onAnswer, clearTrigger }) => {
 // Repeat Sentence Component
 const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [hasPlayedAudio, setHasPlayedAudio] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [mp3URL, setMp3URL] = useState(null);
@@ -266,6 +267,7 @@ const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
   useEffect(() => {
     if (clearTrigger) {
       setIsPlaying(false);
+      setHasPlayedAudio(false);
       setIsRecording(false);
       setAudioBlob(null);
       setMp3URL(null);
@@ -278,14 +280,29 @@ const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
   }, [clearTrigger, onAnswer]);
 
   const toggleAudio = useCallback(() => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
+    if (!audioRef.current) return;
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      return;
     }
+
+    const playPromise = audioRef.current.play();
+    if (playPromise && typeof playPromise.then === "function") {
+      playPromise
+        .then(() => {
+          setHasPlayedAudio(true);
+          setIsPlaying(true);
+        })
+        .catch((error) => {
+          console.error("Audio play failed:", error);
+        });
+      return;
+    }
+
+    setHasPlayedAudio(true);
+    setIsPlaying(true);
   }, [isPlaying]);
 
   const startRecording = useCallback(() => {
@@ -339,6 +356,7 @@ const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
         <audio
           ref={audioRef}
           src={question.audioUrl}
+          onPlay={() => setHasPlayedAudio(true)}
           onEnded={() => setIsPlaying(false)}
           className="w-full"
           controls
@@ -356,9 +374,9 @@ const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
       <div className="flex items-center gap-4 mb-4">
         <button
           onClick={startRecording}
-          disabled={isRecording}
+          disabled={isRecording || !hasPlayedAudio}
           className={`flex items-center px-4 py-2 rounded-md font-medium ${
-            isRecording
+            isRecording || !hasPlayedAudio
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
               : 'bg-red-500 hover:bg-red-600 text-white'
           }`}
@@ -386,6 +404,12 @@ const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
           </div>
         )}
       </div>
+
+      {!hasPlayedAudio ? (
+        <p className="mb-4 text-sm text-[#8A6D3B]">
+          Play the question audio once before recording to enable listening scoring.
+        </p>
+      ) : null}
 
       {/* Audio Preview */}
       {mp3URL && (
@@ -926,17 +950,19 @@ const RWFillInTheBlanksComponent = ({ question, onAnswer }) => {
     setAnswers([]);
   }, [question._id]);
 
-  // Memoize the onAnswer callback to prevent unnecessary re-renders
-  const stableOnAnswer = useCallback(onAnswer, []);
+  const onAnswerRef = useRef(onAnswer);
   const normalizedAnswers = useMemo(
     () => buildIndexedBlankAnswers(question.blanks, answers),
     [question.blanks, answers]
   );
 
-  // Only call onAnswer when answers actually change
   useEffect(() => {
-    stableOnAnswer(normalizedAnswers);
-  }, [normalizedAnswers, stableOnAnswer]);
+    onAnswerRef.current = onAnswer;
+  }, [onAnswer]);
+
+  useEffect(() => {
+    onAnswerRef.current(normalizedAnswers);
+  }, [normalizedAnswers]);
 
   
 
@@ -946,10 +972,11 @@ const handleAnswerChange = useCallback((blankIndex, value) => {
     const newAnswers = [...prev];
      if (newAnswers[blankIndex] === value) return newAnswers;
      newAnswers[blankIndex] = value;
+     onAnswerRef.current(buildIndexedBlankAnswers(question.blanks, newAnswers));
 
     return newAnswers;
   });
-}, []);
+}, [question.blanks]);
 
 
 
@@ -970,8 +997,6 @@ const handleAnswerChange = useCallback((blankIndex, value) => {
 
     const parts = text.split(/<BLANK_\d+>/);
     const result = [];
-    console.log("blanks.length",blanks.length);
-    
   parts.forEach((part, index) => {
   // Push the part (text) into the result array
   result.push(<span key={`text-${index}`}>{part}</span>);
@@ -1042,6 +1067,10 @@ if (blanks.length > parts.length) {
 const MCQMultipleComponent = ({ question, onAnswer, clearTrigger }) => {
   const [selectedAnswers, setSelectedAnswers] = useState([]);
 
+  useEffect(() => {
+    setSelectedAnswers([]);
+  }, [question._id]);
+
   // Clear component state when clearTrigger changes
   useEffect(() => {
     if (clearTrigger) {
@@ -1050,19 +1079,26 @@ const MCQMultipleComponent = ({ question, onAnswer, clearTrigger }) => {
     }
   }, [clearTrigger, onAnswer]);
 
-  // Stable onAnswer callback
-  const stableOnAnswer = useCallback(onAnswer, []);
+  const onAnswerRef = useRef(onAnswer);
 
   useEffect(() => {
-    stableOnAnswer(selectedAnswers);
-  }, [selectedAnswers, stableOnAnswer]);
+    onAnswerRef.current = onAnswer;
+  }, [onAnswer]);
+
+  useEffect(() => {
+    onAnswerRef.current(selectedAnswers);
+  }, [selectedAnswers]);
 
   const handleAnswerChange = useCallback((option) => {
     setSelectedAnswers(prev => {
       if (prev.includes(option)) {
-        return prev.filter(item => item !== option);
+        const nextAnswers = prev.filter(item => item !== option);
+        onAnswerRef.current(nextAnswers);
+        return nextAnswers;
       } else {
-        return [...prev, option];
+        const nextAnswers = [...prev, option];
+        onAnswerRef.current(nextAnswers);
+        return nextAnswers;
       }
     });
   }, []);
@@ -1106,6 +1142,10 @@ const MCQMultipleComponent = ({ question, onAnswer, clearTrigger }) => {
 const MCQSingleComponent = ({ question, onAnswer, clearTrigger }) => {
   const [selectedAnswer, setSelectedAnswer] = useState('');
 
+  useEffect(() => {
+    setSelectedAnswer('');
+  }, [question._id]);
+
   // Clear component state when clearTrigger changes
   useEffect(() => {
     if (clearTrigger) {
@@ -1114,15 +1154,19 @@ const MCQSingleComponent = ({ question, onAnswer, clearTrigger }) => {
     }
   }, [clearTrigger, onAnswer]);
 
-  // Stable onAnswer callback
-  const stableOnAnswer = useCallback(onAnswer, []);
+  const onAnswerRef = useRef(onAnswer);
 
   useEffect(() => {
-    stableOnAnswer(selectedAnswer);
-  }, [selectedAnswer, stableOnAnswer]);
+    onAnswerRef.current = onAnswer;
+  }, [onAnswer]);
+
+  useEffect(() => {
+    onAnswerRef.current(selectedAnswer);
+  }, [selectedAnswer]);
 
   const handleAnswerChange = useCallback((value) => {
     setSelectedAnswer(value);
+    onAnswerRef.current(value);
   }, []);
 
   return (
@@ -1167,6 +1211,11 @@ const ReorderParagraphsComponent = ({ question, onAnswer, clearTrigger }) => {
   const [orderedOptions, setOrderedOptions] = useState(question.options || []);
   const [hasInteracted, setHasInteracted] = useState(false);
 
+  useEffect(() => {
+    setOrderedOptions(question.options || []);
+    setHasInteracted(false);
+  }, [question._id, question.options]);
+
   // Clear component state when clearTrigger changes
   useEffect(() => {
     if (clearTrigger) {
@@ -1176,12 +1225,15 @@ const ReorderParagraphsComponent = ({ question, onAnswer, clearTrigger }) => {
     }
   }, [clearTrigger, question.options, onAnswer]);
 
-  // Stable onAnswer callback
-  const stableOnAnswer = useCallback(onAnswer, []);
+  const onAnswerRef = useRef(onAnswer);
 
   useEffect(() => {
-    stableOnAnswer(hasInteracted ? orderedOptions : []);
-  }, [hasInteracted, orderedOptions, stableOnAnswer]);
+    onAnswerRef.current = onAnswer;
+  }, [onAnswer]);
+
+  useEffect(() => {
+    onAnswerRef.current(hasInteracted ? orderedOptions : []);
+  }, [hasInteracted, orderedOptions]);
 
   const moveItem = useCallback((fromIndex, toIndex) => {
     if (fromIndex === toIndex) {
@@ -1193,6 +1245,7 @@ const ReorderParagraphsComponent = ({ question, onAnswer, clearTrigger }) => {
       const newOptions = [...prev];
       const [movedItem] = newOptions.splice(fromIndex, 1);
       newOptions.splice(toIndex, 0, movedItem);
+      onAnswerRef.current(newOptions);
       return newOptions;
     });
   }, []);
@@ -1252,6 +1305,15 @@ const ListeningFillInTheBlanksComponent = ({ question, onAnswer, clearTrigger })
     [question.blanks, answers]
   );
 
+  useEffect(() => {
+    setIsPlaying(false);
+    setAnswers({});
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+  }, [question._id]);
+
   // Clear component state when clearTrigger changes
   useEffect(() => {
     if (clearTrigger) {
@@ -1265,12 +1327,15 @@ const ListeningFillInTheBlanksComponent = ({ question, onAnswer, clearTrigger })
     }
   }, [clearTrigger, onAnswer]);
 
-  // Stable onAnswer callback
-  const stableOnAnswer = useCallback(onAnswer, []);
+  const onAnswerRef = useRef(onAnswer);
 
   useEffect(() => {
-    stableOnAnswer(normalizedAnswers);
-  }, [normalizedAnswers, stableOnAnswer]);
+    onAnswerRef.current = onAnswer;
+  }, [onAnswer]);
+
+  useEffect(() => {
+    onAnswerRef.current(normalizedAnswers);
+  }, [normalizedAnswers]);
 
   const toggleAudio = useCallback(() => {
     if (audioRef.current) {
@@ -1286,12 +1351,14 @@ const ListeningFillInTheBlanksComponent = ({ question, onAnswer, clearTrigger })
   const handleAnswerChange = useCallback((blankIndex, value) => {
     setAnswers(prev => {
       if (prev[blankIndex] === value) return prev;
-      return {
+      const nextAnswers = {
         ...prev,
         [blankIndex]: value
       };
+      onAnswerRef.current(buildOrderedBlankAnswers(question.blanks, nextAnswers));
+      return nextAnswers;
     });
-  }, []);
+  }, [question.blanks]);
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -1371,6 +1438,15 @@ const ListeningMCQComponent = ({ question, onAnswer, isMultiple = false, clearTr
     [isMultiple, selectedAnswers]
   );
 
+  useEffect(() => {
+    setIsPlaying(false);
+    setSelectedAnswers(isMultiple ? [] : '');
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+  }, [question._id, isMultiple]);
+
   // Clear component state when clearTrigger changes
   useEffect(() => {
     if (clearTrigger) {
@@ -1384,12 +1460,15 @@ const ListeningMCQComponent = ({ question, onAnswer, isMultiple = false, clearTr
     }
   }, [clearTrigger, isMultiple, onAnswer]);
 
-  // Stable onAnswer callback
-  const stableOnAnswer = useCallback(onAnswer, []);
+  const onAnswerRef = useRef(onAnswer);
 
   useEffect(() => {
-    stableOnAnswer(normalizedAnswers);
-  }, [normalizedAnswers, stableOnAnswer]);
+    onAnswerRef.current = onAnswer;
+  }, [onAnswer]);
+
+  useEffect(() => {
+    onAnswerRef.current(normalizedAnswers);
+  }, [normalizedAnswers]);
 
   const toggleAudio = useCallback(() => {
     if (audioRef.current) {
@@ -1406,13 +1485,18 @@ const ListeningMCQComponent = ({ question, onAnswer, isMultiple = false, clearTr
     if (isMultiple) {
       setSelectedAnswers(prev => {
         if (prev.includes(option)) {
-          return prev.filter(item => item !== option);
+          const nextAnswers = prev.filter(item => item !== option);
+          onAnswerRef.current(nextAnswers);
+          return nextAnswers;
         } else {
-          return [...prev, option];
+          const nextAnswers = [...prev, option];
+          onAnswerRef.current(nextAnswers);
+          return nextAnswers;
         }
       });
     } else {
       setSelectedAnswers(option);
+      onAnswerRef.current(normalizeSingleChoiceAnswer(option));
     }
   }, [isMultiple]);
 
@@ -1611,6 +1695,10 @@ export default function DynamicMockTest({ params }) {
     () => getAttemptStorageKey(mockTestId),
     [mockTestId]
   );
+  const attemptStartedAtStorageKey = useMemo(
+    () => `${attemptStorageKey}:started-at`,
+    [attemptStorageKey]
+  );
   
   const [testData, setTestData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1618,12 +1706,15 @@ export default function DynamicMockTest({ params }) {
   const [answers, setAnswers] = useState({});
   const answersRef = useRef({});
   const [attemptId, setAttemptId] = useState(null);
+  const [attemptStartedAt, setAttemptStartedAt] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState("");
   const [showResultModal, setShowResultModal] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [showRouteConfirm, setShowRouteConfirm] = useState(false);
   const [pendingRoute, setPendingRoute] = useState(null);
   const pendingSubmissionPromises = useRef([]);
+  const submissionQueueRef = useRef(Promise.resolve());
 
   const ensureAttemptId = useCallback(() => {
     if (attemptId) {
@@ -1641,6 +1732,24 @@ export default function DynamicMockTest({ params }) {
     setAttemptId(newAttemptId);
     return newAttemptId;
   }, [attemptId, attemptStorageKey]);
+
+  const ensureAttemptStartedAt = useCallback(() => {
+    const numericStartedAt = Number(attemptStartedAt);
+    if (Number.isFinite(numericStartedAt) && numericStartedAt > 0) {
+      return numericStartedAt;
+    }
+
+    const storedStartedAt = Number(sessionStorage.getItem(attemptStartedAtStorageKey));
+    if (Number.isFinite(storedStartedAt) && storedStartedAt > 0) {
+      setAttemptStartedAt(storedStartedAt);
+      return storedStartedAt;
+    }
+
+    const newStartedAt = Date.now();
+    sessionStorage.setItem(attemptStartedAtStorageKey, String(newStartedAt));
+    setAttemptStartedAt(newStartedAt);
+    return newStartedAt;
+  }, [attemptStartedAt, attemptStartedAtStorageKey]);
 
   // Prevent route changes during test
   useEffect(() => {
@@ -1699,11 +1808,19 @@ export default function DynamicMockTest({ params }) {
     if (!mockTestId) return;
 
     const nextAttemptId = createAttemptId();
+    const nextAttemptStartedAt = Date.now();
     sessionStorage.setItem(attemptStorageKey, nextAttemptId);
+    sessionStorage.setItem(
+      attemptStartedAtStorageKey,
+      String(nextAttemptStartedAt)
+    );
     setAttemptId(nextAttemptId);
+    setAttemptStartedAt(nextAttemptStartedAt);
     setAnswers({});
     answersRef.current = {};
-  }, [attemptStorageKey, mockTestId]);
+    pendingSubmissionPromises.current = [];
+    submissionQueueRef.current = Promise.resolve();
+  }, [attemptStartedAtStorageKey, attemptStorageKey, mockTestId]);
 
   // Fetch test data
   useEffect(() => {
@@ -1742,6 +1859,7 @@ export default function DynamicMockTest({ params }) {
   // Submit individual answer
   const submitAnswer = useCallback(async (questionId, answer) => {
     const currentAttemptId = ensureAttemptId();
+    ensureAttemptStartedAt();
     if (!currentAttemptId || !hasMeaningfulAnswer(answer)) return;
 
     try {
@@ -1782,13 +1900,18 @@ export default function DynamicMockTest({ params }) {
       console.error("Failed to submit answer:", error);
       throw error;
     }
-  }, [baseUrl, ensureAttemptId, mockTestId]);
+  }, [baseUrl, ensureAttemptId, ensureAttemptStartedAt, mockTestId]);
 
   const queueAnswerSubmission = useCallback((questionId, answer) => {
     if (!hasMeaningfulAnswer(answer)) return null;
 
+    const baseSubmissionPromise = submissionQueueRef.current
+      .catch(() => null)
+      .then(() => submitAnswer(questionId, answer));
+    submissionQueueRef.current = baseSubmissionPromise;
+
     let submissionPromise;
-    submissionPromise = submitAnswer(questionId, answer)
+    submissionPromise = baseSubmissionPromise
       .catch((error) => {
         console.error(`Submission failed for question ${questionId}:`, error);
         throw error;
@@ -1832,31 +1955,74 @@ export default function DynamicMockTest({ params }) {
   // Submit entire test
   const submitTest = useCallback(async () => {
     setIsSubmitting(true);
+    setSubmissionError("");
     try {
       const currentAttemptId = ensureAttemptId();
+      const currentAttemptStartedAt = ensureAttemptStartedAt();
       const pendingSubmissions = [...pendingSubmissionPromises.current];
       if (pendingSubmissions.length > 0) {
-        await Promise.allSettled(pendingSubmissions);
+        const submissionResults = await Promise.allSettled(pendingSubmissions);
+        const failedSubmission = submissionResults.find(
+          (submissionResult) => submissionResult.status === "rejected"
+        );
+
+        if (failedSubmission) {
+          throw failedSubmission.reason || new Error("Failed to save one or more answers.");
+        }
       }
 
-      const resultUrl = `${baseUrl}/full-mock-test/get-mock-test-result/${mockTestId}?attemptId=${encodeURIComponent(currentAttemptId)}`;
+      const resultUrl = `${baseUrl}/full-mock-test/get-mock-test-result/${mockTestId}?attemptId=${encodeURIComponent(currentAttemptId)}&attemptStartedAt=${encodeURIComponent(String(currentAttemptStartedAt))}`;
       const response = await fetchWithAuth(resultUrl);
+      if (!response?.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.message || "Failed to fetch test result.");
+      }
+
       const result = await response.json();
-      setTestResult(result);
+      if (!result?.success) {
+        throw new Error(result?.message || "Failed to fetch test result.");
+      }
+
+      const answeredCount = Object.values(answersRef.current).filter((answer) =>
+        hasMeaningfulAnswer(answer)
+      ).length;
+      const completedTaskCount = Number(result?.data?.completedTaskCount || 0);
+
+      const hasUnscoredAnswers = answeredCount > 0 && completedTaskCount === 0;
+      const normalizedResult = hasUnscoredAnswers
+        ? {
+            ...result,
+            data: {
+              ...(result?.data || {}),
+              speaking: 0,
+              listening: 0,
+              reading: 0,
+              writing: 0,
+              totalScore: 0,
+              completedTaskCount: 0,
+            },
+          }
+        : result;
+
+      setTestResult(normalizedResult);
       setShowResultModal(true);
       sessionStorage.removeItem(attemptStorageKey);
+      sessionStorage.removeItem(attemptStartedAtStorageKey);
     } catch (error) {
       console.error("Failed to submit test:", error);
+      setSubmissionError(error?.message || "Failed to submit test.");
     } finally {
       setIsSubmitting(false);
     }
-  }, [attemptStorageKey, baseUrl, ensureAttemptId, mockTestId]);
+  }, [attemptStartedAtStorageKey, attemptStorageKey, baseUrl, ensureAttemptId, ensureAttemptStartedAt, mockTestId]);
 
   const handleResultModalClose = useCallback(() => {
     sessionStorage.removeItem(attemptStorageKey);
+    sessionStorage.removeItem(attemptStartedAtStorageKey);
+    setSubmissionError("");
     setShowResultModal(false);
     router.push('/dashboard');
-  }, [attemptStorageKey, router]);
+  }, [attemptStartedAtStorageKey, attemptStorageKey, router]);
 
   // Memoized current question to prevent unnecessary re-renders
   const currentQuestion = useMemo(() => {
@@ -1951,6 +2117,10 @@ export default function DynamicMockTest({ params }) {
 </button>
 
         </div>
+
+        {submissionError ? (
+          <p className="mt-3 text-sm font-medium text-red-600">{submissionError}</p>
+        ) : null}
       </div>
 
       {/* Modals */}

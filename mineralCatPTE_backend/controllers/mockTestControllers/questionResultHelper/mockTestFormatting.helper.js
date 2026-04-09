@@ -37,7 +37,7 @@ const TASK_SUBTYPE_METADATA = {
   },
   respond_to_situation: {
     label: "Respond to a Situation",
-    communicativeSkills: ["speaking"],
+    communicativeSkills: ["listening", "speaking"],
   },
   answer_short_question: {
     label: "Answer Short Question",
@@ -214,34 +214,62 @@ function normalizeToPteScore(rawScore, maxScore) {
   return 10 + ratio * 80;
 }
 
-function buildLatestAttemptMap(results = [], attemptId = null) {
+function buildLatestAttemptMap(results = [], attemptId = null, startedAfter = null) {
   const latestAttempts = new Map();
   const normalizedAttemptId = normalizeAttemptId(attemptId);
+  const normalizedStartedAfter = Number(startedAfter);
+  const hasStartedAfterFilter = Number.isFinite(normalizedStartedAfter) && normalizedStartedAfter > 0;
 
-  results.forEach((result) => {
-    result.attempts.forEach((attempt) => {
-      if (
-        normalizedAttemptId &&
-        normalizeAttemptId(attempt.attemptId) !== normalizedAttemptId
-      ) {
-        return;
-      }
+  const collectAttempts = (strictAttemptIdFilter, applyStartedAfterFilter = true) => {
+    latestAttempts.clear();
 
-      const questionId = String(attempt.questionId);
-      const submittedAt = new Date(attempt.submittedAt || 0).getTime();
-      const existingAttempt = latestAttempts.get(questionId);
+    results.forEach((result) => {
+      const attempts = Array.isArray(result?.attempts) ? result.attempts : [];
 
-      if (!existingAttempt || submittedAt >= existingAttempt.submittedAt) {
-        latestAttempts.set(questionId, {
-          type: result.type,
-          questionId,
-          questionSubtype: attempt.questionSubtype,
-          score: attempt.score,
-          submittedAt,
-        });
-      }
+      attempts.forEach((attempt) => {
+        const submittedAt = new Date(attempt.submittedAt || 0).getTime();
+
+        if (
+          applyStartedAfterFilter &&
+          hasStartedAfterFilter &&
+          submittedAt < normalizedStartedAfter
+        ) {
+          return;
+        }
+
+        if (
+          strictAttemptIdFilter &&
+          normalizedAttemptId &&
+          normalizeAttemptId(attempt.attemptId) !== normalizedAttemptId
+        ) {
+          return;
+        }
+
+        const questionId = String(attempt.questionId);
+        const existingAttempt = latestAttempts.get(questionId);
+
+        if (!existingAttempt || submittedAt >= existingAttempt.submittedAt) {
+          latestAttempts.set(questionId, {
+            type: result.type,
+            questionId,
+            questionSubtype: attempt.questionSubtype,
+            score: attempt.score,
+            assessmentScore: attempt.assessmentScore,
+            assessmentMaxScore: attempt.assessmentMaxScore,
+            skillScores: attempt.skillScores,
+            submittedAt,
+          });
+        }
+      });
     });
-  });
+  };
+
+  collectAttempts(true, true);
+
+  // Fallback: attemptId-only (ignoring startedAfter) to handle clock drift.
+  if (latestAttempts.size === 0 && hasStartedAfterFilter) {
+    collectAttempts(true, false);
+  }
 
   return latestAttempts;
 }
@@ -249,6 +277,11 @@ function buildLatestAttemptMap(results = [], attemptId = null) {
 function getRoundedSectionScore(scores) {
   if (!scores.length) return null;
   return Math.round(average(scores));
+}
+
+function getFiniteNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
 }
 
 function buildSkillProfileBuckets() {
@@ -376,13 +409,17 @@ function buildEmptyFormattedMockTestResult(referenceDate = null) {
 }
 
 async function buildFormattedMockTestResult(mockTestResultDoc, options = {}) {
-  const { attemptId = null, referenceDate = null } = options;
+  const { attemptId = null, startedAfter = null, referenceDate = null } = options;
 
   if (!mockTestResultDoc) {
     return buildEmptyFormattedMockTestResult(referenceDate);
   }
 
-  const latestAttempts = buildLatestAttemptMap(mockTestResultDoc.results, attemptId);
+  const latestAttempts = buildLatestAttemptMap(
+    Array.isArray(mockTestResultDoc.results) ? mockTestResultDoc.results : [],
+    attemptId,
+    startedAfter
+  );
   const questionIds = [...latestAttempts.keys()];
 
   if (!questionIds.length) {
@@ -411,7 +448,7 @@ async function buildFormattedMockTestResult(mockTestResultDoc, options = {}) {
     questions.map((question) => [String(question._id), question])
   );
 
-  const sectionBuckets = {
+  const communicativeSkillBuckets = {
     speaking: [],
     listening: [],
     reading: [],
@@ -429,44 +466,93 @@ async function buildFormattedMockTestResult(mockTestResultDoc, options = {}) {
 
   latestAttempts.forEach((attempt) => {
     const question = questionMap.get(attempt.questionId);
-    const maxScore = getQuestionMaxScore(attempt.questionSubtype, question);
-    const normalizedScore = normalizeToPteScore(attempt.score, maxScore);
+    const inferredMaxScore = getQuestionMaxScore(attempt.questionSubtype, question);
+    const persistedAssessmentMaxScore = getFiniteNumber(attempt.assessmentMaxScore);
+    const maxScore =
+      persistedAssessmentMaxScore !== null && persistedAssessmentMaxScore > 0
+        ? persistedAssessmentMaxScore
+        : inferredMaxScore;
+    const rawScore =
+      getFiniteNumber(attempt.assessmentScore) ?? getFiniteNumber(attempt.score) ?? 0;
+    const normalizedScore = normalizeToPteScore(rawScore, maxScore);
 
     if (normalizedScore !== null) {
-      const roundedTaskScore = Math.round(normalizedScore);
       const taskMetadata = getTaskSubtypeMetadata(attempt.questionSubtype);
       const submittedAt = attempt.submittedAt
         ? new Date(attempt.submittedAt).toISOString()
         : null;
+      const metadataCommunicativeSkills =
+        Array.isArray(taskMetadata.communicativeSkills) &&
+        taskMetadata.communicativeSkills.length
+          ? taskMetadata.communicativeSkills
+          : [attempt.type];
+      const scoredCommunicativeSkills = Object.entries(attempt?.skillScores || {})
+        .filter(([skillKey, skillScore]) => {
+          if (!Object.prototype.hasOwnProperty.call(communicativeSkillBuckets, skillKey)) {
+            return false;
+          }
+
+          return getFiniteNumber(skillScore) !== null;
+        })
+        .map(([skillKey]) => skillKey);
+      const taskCommunicativeSkills = Array.from(
+        new Set([
+          ...metadataCommunicativeSkills,
+          ...scoredCommunicativeSkills,
+        ])
+      ).filter((skillKey) =>
+        Object.prototype.hasOwnProperty.call(communicativeSkillBuckets, skillKey)
+      );
 
       overallTaskScores.push(normalizedScore);
 
-      if (sectionBuckets[attempt.type]) {
-        sectionBuckets[attempt.type].push(normalizedScore);
-      }
+      const baseTaskPayload = {
+        questionId: attempt.questionId,
+        questionNumber: question?.questionNumber ?? null,
+        reference: Number.isFinite(Number(question?.questionNumber))
+          ? `#${question.questionNumber}`
+          : null,
+        title: getQuestionTitle(question, attempt.questionSubtype),
+        subtype: attempt.questionSubtype,
+        subtypeLabel: taskMetadata.label,
+        submittedAt,
+      };
 
-      if (sectionTasks[attempt.type]) {
-        sectionTasks[attempt.type].push({
-          questionId: attempt.questionId,
-          questionNumber: question?.questionNumber ?? null,
-          reference: Number.isFinite(Number(question?.questionNumber))
-            ? `#${question.questionNumber}`
-            : null,
-          title: getQuestionTitle(question, attempt.questionSubtype),
-          subtype: attempt.questionSubtype,
-          subtypeLabel: taskMetadata.label,
-          rawScore: Number.isFinite(Number(attempt.score))
-            ? Number(attempt.score)
-            : 0,
-          maxScore,
-          score: roundedTaskScore,
+      taskCommunicativeSkills.forEach((skillKey) => {
+        if (!communicativeSkillBuckets[skillKey] || !sectionTasks[skillKey]) return;
+        const persistedSkillRawScore = getFiniteNumber(attempt?.skillScores?.[skillKey]);
+        const isPrimarySkill = skillKey === attempt.type;
+
+        // Avoid leaking a secondary communicative skill score when the scorer did not provide one.
+        if (!isPrimarySkill && persistedSkillRawScore === null) return;
+
+        const normalizedSkillScore =
+          persistedSkillRawScore !== null
+            ? normalizeToPteScore(persistedSkillRawScore, 100)
+            : normalizedScore;
+
+        if (normalizedSkillScore === null) return;
+
+        const roundedSkillTaskScore = Math.round(normalizedSkillScore);
+        const skillTaskRawScore =
+          persistedSkillRawScore !== null ? persistedSkillRawScore : rawScore;
+        const skillTaskMaxScore = persistedSkillRawScore !== null ? 100 : maxScore;
+
+        communicativeSkillBuckets[skillKey].push(normalizedSkillScore);
+
+        sectionTasks[skillKey].push({
+          ...baseTaskPayload,
+          rawScore: skillTaskRawScore,
+          maxScore: skillTaskMaxScore,
+          score: roundedSkillTaskScore,
           communicativeSkills: buildCommunicativeSkillRows(
-            taskMetadata.communicativeSkills,
-            roundedTaskScore
+            taskCommunicativeSkills.length
+              ? taskCommunicativeSkills
+              : [attempt.type],
+            roundedSkillTaskScore
           ),
-          submittedAt,
         });
-      }
+      });
 
       SKILL_PROFILE_GROUPS.forEach((group) => {
         if (group.subtypes.includes(attempt.questionSubtype)) {
@@ -484,28 +570,27 @@ async function buildFormattedMockTestResult(mockTestResultDoc, options = {}) {
     }
   });
 
-  const speaking = getRoundedSectionScore(sectionBuckets.speaking);
-  const listening = getRoundedSectionScore(sectionBuckets.listening);
-  const reading = getRoundedSectionScore(sectionBuckets.reading);
-  const writing = getRoundedSectionScore(sectionBuckets.writing);
+  const speaking = getRoundedSectionScore(communicativeSkillBuckets.speaking);
+  const listening = getRoundedSectionScore(communicativeSkillBuckets.listening);
+  const reading = getRoundedSectionScore(communicativeSkillBuckets.reading);
+  const writing = getRoundedSectionScore(communicativeSkillBuckets.writing);
 
-  // The overall score should reflect performance across all completed tasks,
-  // not a simple average of the 4 communicative skill scores.
-  const totalScore = overallTaskScores.length
-    ? Math.round(average(overallTaskScores))
+  // Overall score is the sum of communicative skill scores that are available.
+  const totalScoreParts = [listening, reading, speaking, writing].filter((value) =>
+    Number.isFinite(value)
+  );
+  const totalScore = totalScoreParts.length
+    ? totalScoreParts.reduce((sum, value) => sum + value, 0)
     : null;
   const skillsProfile = buildSkillProfiles(skillProfileBuckets);
   const sections = SECTION_ORDER.map((sectionKey) => ({
     key: sectionKey,
     label: SECTION_LABELS[sectionKey],
-    score: getRoundedSectionScore(sectionBuckets[sectionKey]),
+    score: getRoundedSectionScore(communicativeSkillBuckets[sectionKey]),
     taskCount: sectionTasks[sectionKey].length,
     tasks: sortSectionTasks(sectionTasks[sectionKey]),
   }));
-  const completedTaskCount = sections.reduce(
-    (total, section) => total + section.taskCount,
-    0
-  );
+  const completedTaskCount = overallTaskScores.length;
 
   return {
     speaking,

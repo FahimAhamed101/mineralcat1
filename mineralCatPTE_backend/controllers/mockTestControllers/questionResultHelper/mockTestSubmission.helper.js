@@ -59,6 +59,15 @@ function hasMeaningfulAnswer(value) {
     return Object.values(value).some((item) => hasMeaningfulAnswer(item));
   }
 
+  if (typeof value === "number") {
+    // Numeric placeholders (for example blank indexes) are not answers by themselves.
+    return false;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
   return Boolean(value);
 }
 
@@ -96,6 +105,127 @@ function hasAttemptForAttemptId(mockTestResult, attemptId) {
   );
 }
 
+function isRetryableMockResultWriteError(error) {
+  if (!error) return false;
+
+  return error.name === "VersionError" || error.code === 11000;
+}
+
+function wait(delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function getMockResultRetryDelayMs(retryIndex) {
+  const baseDelayMs = 40;
+  const exponentialDelayMs = baseDelayMs * (2 ** retryIndex);
+  const cappedDelayMs = Math.min(exponentialDelayMs, 1000);
+  const jitterMs = Math.floor(Math.random() * 40);
+
+  return cappedDelayMs + jitterMs;
+}
+
+async function persistMockTestAttemptWithRetry({
+  mockTestResultModel,
+  userId,
+  mockTestId,
+  questionType,
+  attempt,
+  maxRetries = 8,
+} = {}) {
+  const normalizedAttemptId = normalizeAttemptId(attempt?.attemptId);
+  const questionId = attempt?.questionId ? String(attempt.questionId) : null;
+
+  for (let retryIndex = 0; retryIndex <= maxRetries; retryIndex += 1) {
+    const currentDoc = await mockTestResultModel.findOne({
+      user: userId,
+      mockTest: mockTestId,
+    });
+
+    if (!currentDoc) {
+      try {
+        await mockTestResultModel.create({
+          user: userId,
+          mockTest: mockTestId,
+          results: [
+            {
+              type: questionType,
+              averageScore: attempt.score,
+              attempts: [attempt],
+            },
+          ],
+        });
+        return;
+      } catch (error) {
+        if (
+          isRetryableMockResultWriteError(error) &&
+          retryIndex < maxRetries
+        ) {
+          await wait(getMockResultRetryDelayMs(retryIndex));
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    const existingTypeResult = currentDoc.results.find(
+      (result) => result.type === questionType
+    );
+
+    if (existingTypeResult) {
+      const existingAttemptIndex =
+        normalizedAttemptId && questionId
+          ? existingTypeResult.attempts.findIndex((currentAttempt) => {
+              if (String(currentAttempt.questionId) !== questionId) {
+                return false;
+              }
+
+              return (
+                normalizeAttemptId(currentAttempt.attemptId) === normalizedAttemptId
+              );
+            })
+          : -1;
+
+      if (existingAttemptIndex >= 0) {
+        // Keep one latest submission per question for a specific attemptId.
+        existingTypeResult.attempts[existingAttemptIndex] = attempt;
+      } else {
+        existingTypeResult.attempts.push(attempt);
+      }
+
+      const totalScore = existingTypeResult.attempts.reduce(
+        (acc, currentAttempt) => acc + Number(currentAttempt.score || 0),
+        0
+      );
+      existingTypeResult.averageScore =
+        existingTypeResult.attempts.length > 0
+          ? totalScore / existingTypeResult.attempts.length
+          : 0;
+    } else {
+      currentDoc.results.push({
+        type: questionType,
+        averageScore: attempt.score,
+        attempts: [attempt],
+      });
+    }
+
+    try {
+      await currentDoc.save();
+      return;
+    } catch (error) {
+      if (
+        isRetryableMockResultWriteError(error) &&
+        retryIndex < maxRetries
+      ) {
+        await wait(getMockResultRetryDelayMs(retryIndex));
+        continue;
+      }
+
+      throw error;
+    }
+  }
+}
+
 function average(values = []) {
   const numericValues = values.filter((value) => Number.isFinite(value));
   if (!numericValues.length) return 0;
@@ -105,6 +235,99 @@ function average(values = []) {
   );
 }
 
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function toFiniteNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function getFirstFiniteNumber(...values) {
+  for (const value of values) {
+    const numericValue = toFiniteNumber(value);
+    if (numericValue !== null) {
+      return numericValue;
+    }
+  }
+
+  return null;
+}
+
+function normalizeSkillScoreToPercent(score, maxScore = null) {
+  const numericScore = toFiniteNumber(score);
+  if (numericScore === null) return null;
+
+  const numericMaxScore = toFiniteNumber(maxScore);
+  if (numericMaxScore !== null && numericMaxScore > 0) {
+    return clamp((numericScore / numericMaxScore) * 100, 0, 100);
+  }
+
+  if (numericScore >= 0 && numericScore <= 1) {
+    return numericScore * 100;
+  }
+
+  return clamp(numericScore, 0, 100);
+}
+
+function getAssessmentAttemptDetails(scoreData = {}) {
+  const assessment = scoreData?.assessment;
+  if (!assessment || typeof assessment !== "object") {
+    return {
+      assessmentScore: null,
+      assessmentMaxScore: null,
+      skillScores: null,
+    };
+  }
+
+  const assessmentScore = getFirstFiniteNumber(
+    assessment.score,
+    assessment.percentage,
+    assessment.totalScore
+  );
+  const assessmentPercentage = toFiniteNumber(assessment.percentage);
+  const assessmentMaxScore =
+    toFiniteNumber(assessment.maxScore) ??
+    (assessmentPercentage !== null ? 100 : null);
+
+  const normalizedSkillScores = {
+    speaking: null,
+    listening: null,
+    reading: null,
+    writing: null,
+  };
+
+  if (Array.isArray(assessment.skills)) {
+    assessment.skills.forEach((skill) => {
+      const skillKey = String(skill?.key || "").trim().toLowerCase();
+      if (!Object.prototype.hasOwnProperty.call(normalizedSkillScores, skillKey)) {
+        return;
+      }
+
+      const skillPercentage = toFiniteNumber(skill?.percentage);
+      const normalizedPercent = normalizeSkillScoreToPercent(
+        skill?.score ?? skillPercentage,
+        skill?.maxScore ?? (skillPercentage !== null ? 100 : null)
+      );
+
+      if (normalizedPercent !== null) {
+        normalizedSkillScores[skillKey] = Number(normalizedPercent.toFixed(2));
+      }
+    });
+  }
+
+  const hasSkillScore = Object.values(normalizedSkillScores).some(
+    (value) => Number.isFinite(value)
+  );
+
+  return {
+    assessmentScore,
+    assessmentMaxScore,
+    skillScores: hasSkillScore ? normalizedSkillScores : null,
+  };
+}
+
 function getSpeechScorePayload(scoreData = {}) {
   return scoreData?.data && typeof scoreData.data === "object"
     ? scoreData.data
@@ -112,8 +335,8 @@ function getSpeechScorePayload(scoreData = {}) {
 }
 
 function getMockQuestionScore(subtype, scoreData = {}) {
-  const normalizedAssessmentScore = Number(scoreData?.assessment?.score);
-  if (Number.isFinite(normalizedAssessmentScore)) {
+  const normalizedAssessmentScore = toFiniteNumber(scoreData?.assessment?.score);
+  if (normalizedAssessmentScore !== null) {
     return normalizedAssessmentScore;
   }
 
@@ -136,6 +359,27 @@ function getMockQuestionScore(subtype, scoreData = {}) {
 
       const pronunciation = Number(responseData?.pronunciation);
       return Number.isFinite(pronunciation) ? Math.round(pronunciation) : 0;
+    }
+
+    case "describe_image": {
+      const responseData = getSpeechScorePayload(scoreData);
+      const directTaskScore = getFirstFiniteNumber(
+        responseData?.taskScore,
+        responseData?.score,
+        scoreData?.score,
+        scoreData?.result?.score
+      );
+
+      if (directTaskScore !== null) {
+        return Math.round(directTaskScore);
+      }
+
+      const speakingScore = getFirstFiniteNumber(
+        responseData?.speakingScore,
+        scoreData?.data?.speakingScore
+      );
+
+      return speakingScore !== null ? Math.round(speakingScore) : 0;
     }
 
     case "respond_to_situation": {
@@ -172,30 +416,49 @@ function getMockQuestionScore(subtype, scoreData = {}) {
     case "mcq_single":
       return typeof scoreData?.score === "number" ? scoreData.score : 0;
 
+    case "rw_fill_in_the_blanks":
     case "reading_fill_in_the_blanks":
     case "listening_fill_in_the_blanks":
     case "listening_multiple_choice_multiple_answers":
     case "listening_multiple_choice_single_answers":
-      return typeof scoreData?.result?.score === "number"
-        ? scoreData.result.score
-        : 0;
+      return (
+        getFirstFiniteNumber(scoreData?.result?.score, scoreData?.score) ?? 0
+      );
 
     case "summarize_spoken_text":
-      return typeof scoreData?.summarize_text_score?.total_score === "number"
-        ? scoreData.summarize_text_score.total_score
-        : 0;
+      return (
+        getFirstFiniteNumber(
+          scoreData?.summarize_text_score?.total_score,
+          scoreData?.score,
+          scoreData?.result?.score
+        ) ?? 0
+      );
 
     default:
+      const fallbackScore = getFirstFiniteNumber(
+        scoreData?.score,
+        scoreData?.result?.score,
+        scoreData?.data?.taskScore,
+        scoreData?.data?.score,
+        scoreData?.total_score
+      );
+
+      if (fallbackScore !== null) {
+        return fallbackScore;
+      }
+
       console.warn("Unhandled subtype:", subtype);
       return 0;
   }
 }
 
 module.exports = {
+  getAssessmentAttemptDetails,
   getMockQuestionScore,
   hasAttemptForAttemptId,
   hasMeaningfulAnswer,
   isAnsweredMockSubmission,
   normalizeAttemptId,
+  persistMockTestAttemptWithRetry,
   parseSerializedRequestData,
 };

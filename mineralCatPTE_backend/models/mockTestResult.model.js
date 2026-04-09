@@ -44,6 +44,22 @@ const TypeScoreSchema = new Schema({
         min: 0,
         max: 100
       },
+      assessmentScore: {
+        type: Number,
+        default: null,
+        min: 0
+      },
+      assessmentMaxScore: {
+        type: Number,
+        default: null,
+        min: 0
+      },
+      skillScores: {
+        speaking: { type: Number, default: null, min: 0, max: 100 },
+        listening: { type: Number, default: null, min: 0, max: 100 },
+        reading: { type: Number, default: null, min: 0, max: 100 },
+        writing: { type: Number, default: null, min: 0, max: 100 }
+      },
       submittedAt: {
         type: Date,
         default: Date.now
