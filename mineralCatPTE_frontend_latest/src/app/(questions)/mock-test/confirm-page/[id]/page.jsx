@@ -254,7 +254,7 @@ const ReadAloudComponent = ({ question, onAnswer, clearTrigger }) => {
 };
 
 // Repeat Sentence Component
-const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
+const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger, onAudioPlayed }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasPlayedAudio, setHasPlayedAudio] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -279,6 +279,11 @@ const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
     }
   }, [clearTrigger, onAnswer]);
 
+  const markAudioPlayed = useCallback(() => {
+    setHasPlayedAudio(true);
+    onAudioPlayed?.();
+  }, [onAudioPlayed]);
+
   const toggleAudio = useCallback(() => {
     if (!audioRef.current) return;
 
@@ -292,7 +297,7 @@ const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
     if (playPromise && typeof playPromise.then === "function") {
       playPromise
         .then(() => {
-          setHasPlayedAudio(true);
+          markAudioPlayed();
           setIsPlaying(true);
         })
         .catch((error) => {
@@ -301,9 +306,9 @@ const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
       return;
     }
 
-    setHasPlayedAudio(true);
+    markAudioPlayed();
     setIsPlaying(true);
-  }, [isPlaying]);
+  }, [isPlaying, markAudioPlayed]);
 
   const startRecording = useCallback(() => {
     recorder.current = new MicRecorder({ bitRate: 128 });
@@ -356,7 +361,7 @@ const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
         <audio
           ref={audioRef}
           src={question.audioUrl}
-          onPlay={() => setHasPlayedAudio(true)}
+          onPlay={markAudioPlayed}
           onEnded={() => setIsPlaying(false)}
           className="w-full"
           controls
@@ -425,7 +430,7 @@ const RepeatSentenceComponent = ({ question, onAnswer, clearTrigger }) => {
 };
 
 // Respond to Situation Component  
-const RespondToSituationComponent = ({ question, onAnswer, clearTrigger }) => {
+const RespondToSituationComponent = ({ question, onAnswer, clearTrigger, onAudioPlayed }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
@@ -448,16 +453,21 @@ const RespondToSituationComponent = ({ question, onAnswer, clearTrigger }) => {
     }
   }, [clearTrigger, onAnswer]);
 
+  const markAudioPlayed = useCallback(() => {
+    onAudioPlayed?.();
+  }, [onAudioPlayed]);
+
   const toggleAudio = useCallback(() => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
       } else {
         audioRef.current.play();
+        markAudioPlayed();
       }
       setIsPlaying(!isPlaying);
     }
-  }, [isPlaying]);
+  }, [isPlaying, markAudioPlayed]);
 
   const startRecording = useCallback(() => {
     recorder.current = new MicRecorder({ bitRate: 128 });
@@ -510,6 +520,7 @@ const RespondToSituationComponent = ({ question, onAnswer, clearTrigger }) => {
         <audio
           ref={audioRef}
           src={question.audioUrl}
+          onPlay={markAudioPlayed}
           onEnded={() => setIsPlaying(false)}
           className="w-full"
           controls
@@ -571,7 +582,7 @@ const RespondToSituationComponent = ({ question, onAnswer, clearTrigger }) => {
 };
 
 // Answer Short Question Component
-const AnswerShortQuestionComponent = ({ question, onAnswer, clearTrigger }) => {
+const AnswerShortQuestionComponent = ({ question, onAnswer, clearTrigger, onAudioPlayed }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
@@ -594,16 +605,21 @@ const AnswerShortQuestionComponent = ({ question, onAnswer, clearTrigger }) => {
     }
   }, [clearTrigger, onAnswer]);
 
+  const markAudioPlayed = useCallback(() => {
+    onAudioPlayed?.();
+  }, [onAudioPlayed]);
+
   const toggleAudio = useCallback(() => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
       } else {
         audioRef.current.play();
+        markAudioPlayed();
       }
       setIsPlaying(!isPlaying);
     }
-  }, [isPlaying]);
+  }, [isPlaying, markAudioPlayed]);
 
   const startRecording = useCallback(() => {
     recorder.current = new MicRecorder({ bitRate: 128 });
@@ -656,6 +672,7 @@ const AnswerShortQuestionComponent = ({ question, onAnswer, clearTrigger }) => {
         <audio
           ref={audioRef}
           src={question.audioUrl}
+          onPlay={markAudioPlayed}
           onEnded={() => setIsPlaying(false)}
           className="w-full"
           controls
@@ -716,10 +733,15 @@ const SummarizeSpokenTextComponent = ({
   onAnswer,
   clearTrigger,
   answerValue,
+  onAudioPlayed,
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [summary, setSummary] = useState(() => normalizeTextAnswer(answerValue));
   const audioRef = useRef(null);
+
+  const markAudioPlayed = useCallback(() => {
+    onAudioPlayed?.();
+  }, [onAudioPlayed]);
 
   useEffect(() => {
     setSummary(normalizeTextAnswer(answerValue));
@@ -744,10 +766,11 @@ const SummarizeSpokenTextComponent = ({
         audioRef.current.pause();
       } else {
         audioRef.current.play();
+        markAudioPlayed();
       }
       setIsPlaying(!isPlaying);
     }
-  }, [isPlaying]);
+  }, [isPlaying, markAudioPlayed]);
 
   const handleSummaryChange = useCallback((e) => {
     const value = e.target.value;
@@ -782,6 +805,7 @@ const SummarizeSpokenTextComponent = ({
         <audio
           ref={audioRef}
           src={question.audioUrl}
+          onPlay={markAudioPlayed}
           onEnded={() => setIsPlaying(false)}
           className="w-full"
           controls
@@ -1296,7 +1320,7 @@ const ReorderParagraphsComponent = ({ question, onAnswer, clearTrigger }) => {
 };
 
 // Listening Fill in the Blanks Component
-const ListeningFillInTheBlanksComponent = ({ question, onAnswer, clearTrigger }) => {
+const ListeningFillInTheBlanksComponent = ({ question, onAnswer, clearTrigger, onAudioPlayed }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [answers, setAnswers] = useState({});
   const audioRef = useRef(null);
@@ -1337,16 +1361,21 @@ const ListeningFillInTheBlanksComponent = ({ question, onAnswer, clearTrigger })
     onAnswerRef.current(normalizedAnswers);
   }, [normalizedAnswers]);
 
+  const markAudioPlayed = useCallback(() => {
+    onAudioPlayed?.();
+  }, [onAudioPlayed]);
+
   const toggleAudio = useCallback(() => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
       } else {
         audioRef.current.play();
+        markAudioPlayed();
       }
       setIsPlaying(!isPlaying);
     }
-  }, [isPlaying]);
+  }, [isPlaying, markAudioPlayed]);
 
   const handleAnswerChange = useCallback((blankIndex, value) => {
     setAnswers(prev => {
@@ -1387,6 +1416,7 @@ const ListeningFillInTheBlanksComponent = ({ question, onAnswer, clearTrigger })
         <audio
           ref={audioRef}
           src={question.audioUrl}
+          onPlay={markAudioPlayed}
           onEnded={() => setIsPlaying(false)}
           className="w-full"
           controls
@@ -1429,7 +1459,7 @@ const ListeningFillInTheBlanksComponent = ({ question, onAnswer, clearTrigger })
 };
 
 // Listening Multiple Choice Components (Single and Multiple)
-const ListeningMCQComponent = ({ question, onAnswer, isMultiple = false, clearTrigger }) => {
+const ListeningMCQComponent = ({ question, onAnswer, isMultiple = false, clearTrigger, onAudioPlayed }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedAnswers, setSelectedAnswers] = useState(isMultiple ? [] : '');
   const audioRef = useRef(null);
@@ -1470,16 +1500,21 @@ const ListeningMCQComponent = ({ question, onAnswer, isMultiple = false, clearTr
     onAnswerRef.current(normalizedAnswers);
   }, [normalizedAnswers]);
 
+  const markAudioPlayed = useCallback(() => {
+    onAudioPlayed?.();
+  }, [onAudioPlayed]);
+
   const toggleAudio = useCallback(() => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
       } else {
         audioRef.current.play();
+        markAudioPlayed();
       }
       setIsPlaying(!isPlaying);
     }
-  }, [isPlaying]);
+  }, [isPlaying, markAudioPlayed]);
 
   const handleAnswerChange = useCallback((option) => {
     if (isMultiple) {
@@ -1527,6 +1562,7 @@ const ListeningMCQComponent = ({ question, onAnswer, isMultiple = false, clearTr
         <audio
           ref={audioRef}
           src={question.audioUrl}
+          onPlay={markAudioPlayed}
           onEnded={() => setIsPlaying(false)}
           className="w-full"
           controls
@@ -1557,7 +1593,7 @@ const ListeningMCQComponent = ({ question, onAnswer, isMultiple = false, clearTr
 };
 
 // Main Question Renderer - Memoized to prevent unnecessary re-renders
-const QuestionRenderer = ({ question, onAnswer, clearTrigger, currentAnswer }) => {
+const QuestionRenderer = ({ question, onAnswer, clearTrigger, currentAnswer, onAudioPlayed }) => {
   const { subtype } = question;
   
   const componentToRender = useMemo(() => {
@@ -1566,13 +1602,13 @@ const QuestionRenderer = ({ question, onAnswer, clearTrigger, currentAnswer }) =
         return <ReadAloudComponent question={question} onAnswer={onAnswer} clearTrigger={clearTrigger} />;
       
       case 'repeat_sentence':
-        return <RepeatSentenceComponent question={question} onAnswer={onAnswer} clearTrigger={clearTrigger} />;
+        return <RepeatSentenceComponent question={question} onAnswer={onAnswer} clearTrigger={clearTrigger} onAudioPlayed={onAudioPlayed} />;
       
       case 'respond_to_situation':
-        return <RespondToSituationComponent question={question} onAnswer={onAnswer} clearTrigger={clearTrigger} />;
+        return <RespondToSituationComponent question={question} onAnswer={onAnswer} clearTrigger={clearTrigger} onAudioPlayed={onAudioPlayed} />;
       
       case 'answer_short_question':
-        return <AnswerShortQuestionComponent question={question} onAnswer={onAnswer} clearTrigger={clearTrigger} />;
+        return <AnswerShortQuestionComponent question={question} onAnswer={onAnswer} clearTrigger={clearTrigger} onAudioPlayed={onAudioPlayed} />;
       
       case 'summarize_spoken_text':
         return (
@@ -1581,6 +1617,7 @@ const QuestionRenderer = ({ question, onAnswer, clearTrigger, currentAnswer }) =
             onAnswer={onAnswer}
             clearTrigger={clearTrigger}
             answerValue={currentAnswer}
+            onAudioPlayed={onAudioPlayed}
           />
         );
       
@@ -1620,13 +1657,13 @@ const QuestionRenderer = ({ question, onAnswer, clearTrigger, currentAnswer }) =
         return <ReorderParagraphsComponent question={question} onAnswer={onAnswer} clearTrigger={clearTrigger} />;
       
       case 'listening_fill_in_the_blanks':
-        return <ListeningFillInTheBlanksComponent question={question} onAnswer={onAnswer} clearTrigger={clearTrigger} />;
+        return <ListeningFillInTheBlanksComponent question={question} onAnswer={onAnswer} clearTrigger={clearTrigger} onAudioPlayed={onAudioPlayed} />;
       
       case 'listening_multiple_choice_multiple_answers':
-        return <ListeningMCQComponent question={question} onAnswer={onAnswer} isMultiple={true} clearTrigger={clearTrigger} />;
+        return <ListeningMCQComponent question={question} onAnswer={onAnswer} isMultiple={true} clearTrigger={clearTrigger} onAudioPlayed={onAudioPlayed} />;
       
       case 'listening_multiple_choice_single_answers':
-        return <ListeningMCQComponent question={question} onAnswer={onAnswer} isMultiple={false} clearTrigger={clearTrigger} />;
+        return <ListeningMCQComponent question={question} onAnswer={onAnswer} isMultiple={false} clearTrigger={clearTrigger} onAudioPlayed={onAudioPlayed} />;
       
       default:
         return (
@@ -1640,7 +1677,7 @@ const QuestionRenderer = ({ question, onAnswer, clearTrigger, currentAnswer }) =
           </div>
         );
     }
-  }, [subtype, question, onAnswer, clearTrigger, currentAnswer]);
+  }, [subtype, question, onAnswer, clearTrigger, currentAnswer, onAudioPlayed]);
 
   return componentToRender;
 };
@@ -1715,6 +1752,7 @@ export default function DynamicMockTest({ params }) {
   const [pendingRoute, setPendingRoute] = useState(null);
   const pendingSubmissionPromises = useRef([]);
   const submissionQueueRef = useRef(Promise.resolve());
+  const playedAudioQuestionsRef = useRef({});
 
   const ensureAttemptId = useCallback(() => {
     if (attemptId) {
@@ -1818,6 +1856,7 @@ export default function DynamicMockTest({ params }) {
     setAttemptStartedAt(nextAttemptStartedAt);
     setAnswers({});
     answersRef.current = {};
+    playedAudioQuestionsRef.current = {};
     pendingSubmissionPromises.current = [];
     submissionQueueRef.current = Promise.resolve();
   }, [attemptStartedAtStorageKey, attemptStorageKey, mockTestId]);
@@ -1856,11 +1895,30 @@ export default function DynamicMockTest({ params }) {
     setAnswers(nextAnswers);
   }, []);
 
+  const handleAudioPlayed = useCallback((questionId) => {
+    if (!questionId || playedAudioQuestionsRef.current[questionId]) {
+      return;
+    }
+
+    playedAudioQuestionsRef.current = {
+      ...playedAudioQuestionsRef.current,
+      [questionId]: true,
+    };
+  }, []);
+
   // Submit individual answer
-  const submitAnswer = useCallback(async (questionId, answer) => {
+  const submitAnswer = useCallback(async (questionId, answer, options = {}) => {
     const currentAttemptId = ensureAttemptId();
     ensureAttemptStartedAt();
-    if (!currentAttemptId || !hasMeaningfulAnswer(answer)) return;
+    const shouldSubmitAudioPlaybackOnly =
+      options.audioPlayed === true && !hasMeaningfulAnswer(answer);
+
+    if (
+      !currentAttemptId ||
+      (!hasMeaningfulAnswer(answer) && !shouldSubmitAudioPlaybackOnly)
+    ) {
+      return;
+    }
 
     try {
       let response;
@@ -1888,6 +1946,7 @@ export default function DynamicMockTest({ params }) {
             answer,
             mockTestId,
             attemptId: currentAttemptId,
+            ...(shouldSubmitAudioPlaybackOnly ? { audioPlayed: true } : {}),
           })
         });
       }
@@ -1902,12 +1961,15 @@ export default function DynamicMockTest({ params }) {
     }
   }, [baseUrl, ensureAttemptId, ensureAttemptStartedAt, mockTestId]);
 
-  const queueAnswerSubmission = useCallback((questionId, answer) => {
-    if (!hasMeaningfulAnswer(answer)) return null;
+  const queueAnswerSubmission = useCallback((questionId, answer, options = {}) => {
+    const shouldSubmitAudioPlaybackOnly =
+      options.audioPlayed === true && !hasMeaningfulAnswer(answer);
+
+    if (!hasMeaningfulAnswer(answer) && !shouldSubmitAudioPlaybackOnly) return null;
 
     const baseSubmissionPromise = submissionQueueRef.current
       .catch(() => null)
-      .then(() => submitAnswer(questionId, answer));
+      .then(() => submitAnswer(questionId, answer, options));
     submissionQueueRef.current = baseSubmissionPromise;
 
     let submissionPromise;
@@ -1932,9 +1994,12 @@ export default function DynamicMockTest({ params }) {
 
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentAnswer = answersRef.current[currentQuestion._id];
+  const hasPlayedAudio = Boolean(playedAudioQuestionsRef.current[currentQuestion._id]);
 
-  if (hasMeaningfulAnswer(currentAnswer)) {
-    queueAnswerSubmission(currentQuestion._id, currentAnswer);
+  if (hasMeaningfulAnswer(currentAnswer) || hasPlayedAudio) {
+    queueAnswerSubmission(currentQuestion._id, currentAnswer, {
+      audioPlayed: hasPlayedAudio,
+    });
   }
 
   if (currentQuestionIndex < testData.questions.length - 1) {
@@ -2080,6 +2145,7 @@ export default function DynamicMockTest({ params }) {
             question={currentQuestion} 
             onAnswer={(answer) => handleAnswerChange(currentQuestion._id, answer)}
             currentAnswer={answers[currentQuestion._id]}
+            onAudioPlayed={() => handleAudioPlayed(currentQuestion._id)}
           />
         )}
         
