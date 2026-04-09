@@ -347,12 +347,19 @@ function getQuestionTitle(question, subtype) {
   return candidateTitle || metadata.label;
 }
 
-function buildCommunicativeSkillRows(communicativeSkills = [], taskScore = null) {
-  return communicativeSkills.map((skillKey) => ({
-    key: skillKey,
-    label: SECTION_LABELS[skillKey] || fallbackSubtypeLabel(skillKey),
-    score: taskScore,
-  }));
+/**
+ * FIX: Only build communicative skill rows for the skills that are actually
+ * relevant to the current section (skillKey), not all skills.
+ */
+function buildCommunicativeSkillRows(communicativeSkills = [], sectionKey, taskScore = null) {
+  // Only include the current section's skill in the row, not all communicative skills
+  return communicativeSkills
+    .filter((skillKey) => skillKey === sectionKey)
+    .map((skillKey) => ({
+      key: skillKey,
+      label: SECTION_LABELS[skillKey] || fallbackSubtypeLabel(skillKey),
+      score: taskScore,
+    }));
 }
 
 function sortSectionTasks(tasks = []) {
@@ -518,6 +525,8 @@ async function buildFormattedMockTestResult(mockTestResultDoc, options = {}) {
         submittedAt,
       };
 
+      // FIX: For each section this task contributes to, only show
+      // the skill row for THAT section's skill key
       taskCommunicativeSkills.forEach((skillKey) => {
         if (!communicativeSkillBuckets[skillKey] || !sectionTasks[skillKey]) return;
         const persistedSkillRawScore = getFiniteNumber(attempt?.skillScores?.[skillKey]);
@@ -540,15 +549,19 @@ async function buildFormattedMockTestResult(mockTestResultDoc, options = {}) {
 
         communicativeSkillBuckets[skillKey].push(normalizedSkillScore);
 
+        // FIX: Pass skillKey so communicativeSkillRows only contains
+        // the relevant skill for this section, not all skills
         sectionTasks[skillKey].push({
           ...baseTaskPayload,
           rawScore: skillTaskRawScore,
           maxScore: skillTaskMaxScore,
-          score: roundedSkillTaskScore,
+          // FIX: Ensure score is always a number, falling back to normalizedScore
+          score: Number.isFinite(roundedSkillTaskScore) ? roundedSkillTaskScore : Math.round(normalizedScore),
           communicativeSkills: buildCommunicativeSkillRows(
             taskCommunicativeSkills.length
               ? taskCommunicativeSkills
               : [attempt.type],
+            skillKey, // pass the current section key
             roundedSkillTaskScore
           ),
         });
@@ -575,13 +588,16 @@ async function buildFormattedMockTestResult(mockTestResultDoc, options = {}) {
   const reading = getRoundedSectionScore(communicativeSkillBuckets.reading);
   const writing = getRoundedSectionScore(communicativeSkillBuckets.writing);
 
-  // Overall score is the sum of communicative skill scores that are available.
+  // FIX: Overall score is the AVERAGE of the available communicative skill scores,
+  // not the sum. Each skill is on a 10-90 scale, so averaging keeps it meaningful.
+  // (Previously was summing them which produced values like 10+26+22+10=68 incorrectly)
   const totalScoreParts = [listening, reading, speaking, writing].filter((value) =>
     Number.isFinite(value)
   );
   const totalScore = totalScoreParts.length
-    ? totalScoreParts.reduce((sum, value) => sum + value, 0)
+    ? Math.round(totalScoreParts.reduce((sum, value) => sum + value, 0) / totalScoreParts.length)
     : null;
+
   const skillsProfile = buildSkillProfiles(skillProfileBuckets);
   const sections = SECTION_ORDER.map((sectionKey) => ({
     key: sectionKey,

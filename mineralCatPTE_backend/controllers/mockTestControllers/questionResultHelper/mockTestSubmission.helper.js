@@ -8,6 +8,16 @@ function parseSerializedRequestData(payload = {}) {
     }
 
     const trimmedValue = value.trim();
+    if (trimmedValue === "true") {
+      normalizedPayload[key] = true;
+      return;
+    }
+
+    if (trimmedValue === "false") {
+      normalizedPayload[key] = false;
+      return;
+    }
+
     if (
       (trimmedValue.startsWith("[") && trimmedValue.endsWith("]")) ||
       (trimmedValue.startsWith("{") && trimmedValue.endsWith("}"))
@@ -83,6 +93,44 @@ function isAnsweredMockSubmission({ answer, file } = {}) {
   }
 
   return hasMeaningfulAnswer(answer);
+}
+
+function isAudioPlaybackOnlyMockSubmission({
+  question,
+  answer,
+  file,
+  audioPlayed,
+} = {}) {
+  if (isAnsweredMockSubmission({ answer, file })) {
+    return false;
+  }
+
+  if (audioPlayed !== true) {
+    return false;
+  }
+
+  return Boolean(question?.audioUrl);
+}
+
+function buildAudioPlaybackOnlyAttempt({
+  questionId,
+  questionSubtype,
+  attemptId,
+} = {}) {
+  return {
+    questionType: "listening",
+    attempt: {
+      questionId,
+      questionSubtype,
+      attemptId,
+      score: 0,
+      assessmentScore: 0,
+      assessmentMaxScore: 100,
+      skillScores: null,
+      audioPlayedOnly: true,
+      submittedAt: new Date(),
+    },
+  };
 }
 
 function hasAttemptForAttemptId(mockTestResult, attemptId) {
@@ -453,10 +501,12 @@ function getMockQuestionScore(subtype, scoreData = {}) {
 }
 
 module.exports = {
+  buildAudioPlaybackOnlyAttempt,
   getAssessmentAttemptDetails,
   getMockQuestionScore,
   hasAttemptForAttemptId,
   hasMeaningfulAnswer,
+  isAudioPlaybackOnlyMockSubmission,
   isAnsweredMockSubmission,
   normalizeAttemptId,
   persistMockTestAttemptWithRetry,

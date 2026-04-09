@@ -60,6 +60,10 @@ const TypeScoreSchema = new Schema({
         reading: { type: Number, default: null, min: 0, max: 100 },
         writing: { type: Number, default: null, min: 0, max: 100 }
       },
+      audioPlayedOnly: {
+        type: Boolean,
+        default: false
+      },
       submittedAt: {
         type: Date,
         default: Date.now

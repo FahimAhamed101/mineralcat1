@@ -11,9 +11,11 @@ const fs = require('fs');
 const FormData = require("form-data");
 const ExpressError = require("../../utils/ExpressError");
 const {
+    buildAudioPlaybackOnlyAttempt,
     getAssessmentAttemptDetails,
     getMockQuestionScore,
     hasAttemptForAttemptId,
+    isAudioPlaybackOnlyMockSubmission,
     isAnsweredMockSubmission,
     normalizeAttemptId,
     persistMockTestAttemptWithRetry,
@@ -146,7 +148,17 @@ module.exports.mockTestResult = async (req, res, next) => {
             throw new ExpressError(400, 'attemptId is required');
         }
 
-        if (!isAnsweredMockSubmission({ answer: newData.answer, file: req.file })) {
+        const isAudioPlaybackOnlyAttempt = isAudioPlaybackOnlyMockSubmission({
+            question,
+            answer: newData.answer,
+            file: req.file,
+            audioPlayed: newData.audioPlayed,
+        });
+
+        if (
+            !isAudioPlaybackOnlyAttempt &&
+            !isAnsweredMockSubmission({ answer: newData.answer, file: req.file })
+        ) {
             if (req.file?.path) {
                 fs.unlink(req.file.path, err => {
                     if (err) console.warn('Failed to delete file:', err);
@@ -191,59 +203,80 @@ module.exports.mockTestResult = async (req, res, next) => {
 
 
 
-        let response;
-        const requestHeaders = {
-            Authorization: req.headers.authorization || '',
-            ...(INTERNAL_REQUEST_KEY ? { 'x-internal-request-key': INTERNAL_REQUEST_KEY } : {}),
-        };
+        let scoreData;
+        let score;
+        let attempt;
+        let questionTypeForAttempt = question.type;
 
-        if (req.file) {
-            const form = new FormData();
-            for (const key in newData) {
-                form.append(key, typeof newData[key] === 'object' ? JSON.stringify(newData[key]) : newData[key]);
-            }
-            form.append('voice', fs.createReadStream(req.file.path));
-
-            response = await axios.post(apiUrl, form, {
-                headers: {
-                    ...form.getHeaders(),
-                    ...requestHeaders,
-                },
+        if (isAudioPlaybackOnlyAttempt) {
+            const playbackAttempt = buildAudioPlaybackOnlyAttempt({
+                questionId,
+                questionSubtype: question.subtype,
+                attemptId,
             });
 
-            fs.unlink(req.file.path, err => {
-                if (err) console.warn('Failed to delete file:', err);
-            });
+            questionTypeForAttempt = playbackAttempt.questionType;
+            attempt = playbackAttempt.attempt;
+            score = playbackAttempt.attempt.score;
+            scoreData = {
+                audioPlayedOnly: true,
+                message: 'Audio playback recorded as a listening-only attempt.',
+            };
         } else {
-            response = await axios.post(apiUrl, newData, {
-                headers: requestHeaders,
-            });
+            let response;
+            const requestHeaders = {
+                Authorization: req.headers.authorization || '',
+                ...(INTERNAL_REQUEST_KEY ? { 'x-internal-request-key': INTERNAL_REQUEST_KEY } : {}),
+            };
+
+            if (req.file) {
+                const form = new FormData();
+                for (const key in newData) {
+                    form.append(key, typeof newData[key] === 'object' ? JSON.stringify(newData[key]) : newData[key]);
+                }
+                form.append('voice', fs.createReadStream(req.file.path));
+
+                response = await axios.post(apiUrl, form, {
+                    headers: {
+                        ...form.getHeaders(),
+                        ...requestHeaders,
+                    },
+                });
+
+                fs.unlink(req.file.path, err => {
+                    if (err) console.warn('Failed to delete file:', err);
+                });
+            } else {
+                response = await axios.post(apiUrl, newData, {
+                    headers: requestHeaders,
+                });
+            }
+
+            scoreData = response.data;
+            if (scoreData?.error) {
+                throw new ExpressError(400, scoreData.error);
+            }
+            score = getMockQuestionScore(question.subtype, scoreData);
+            const attemptAssessmentDetails = getAssessmentAttemptDetails(scoreData);
+
+            attempt = {
+                questionId,
+                questionSubtype: question.subtype,
+                attemptId,
+                score,
+                assessmentScore: attemptAssessmentDetails.assessmentScore,
+                assessmentMaxScore: attemptAssessmentDetails.assessmentMaxScore,
+                skillScores: attemptAssessmentDetails.skillScores,
+                audioPlayedOnly: false,
+                submittedAt: new Date(),
+            };
         }
-
-        const scoreData = response.data;
-        if (scoreData?.error) {
-            throw new ExpressError(400, scoreData.error);
-        }
-        const score = getMockQuestionScore(question.subtype, scoreData);
-        const attemptAssessmentDetails = getAssessmentAttemptDetails(scoreData);
-
-
-        const attempt = {
-            questionId,
-            questionSubtype: question.subtype,
-            attemptId,
-            score,
-            assessmentScore: attemptAssessmentDetails.assessmentScore,
-            assessmentMaxScore: attemptAssessmentDetails.assessmentMaxScore,
-            skillScores: attemptAssessmentDetails.skillScores,
-            submittedAt: new Date(),
-        };
 
         await persistMockTestAttemptWithRetry({
             mockTestResultModel,
             userId,
             mockTestId,
-            questionType: question.type,
+            questionType: questionTypeForAttempt,
             attempt,
         });
 
@@ -251,6 +284,7 @@ module.exports.mockTestResult = async (req, res, next) => {
             success: true,
             data: scoreData,
             score,
+            audioPlayedOnly: isAudioPlaybackOnlyAttempt,
         });
     } catch (error) {
         const subscription = await supscriptionModel.findOne({
