@@ -19,7 +19,12 @@ const PaymentHistory = require('../../models/paymenthistory.model');
 const blackListedTokenModel = require('../../models/blackListedToken.model');
 const bcrypt = require('bcryptjs');
 const NodeCache = require('node-cache');
-const cache = new NodeCache({ stdTTL: 60 * 5 });
+const cache = new NodeCache({
+  stdTTL: 60 * 5,
+  checkperiod: 60,
+  useClones: false,
+  maxKeys: 1000,
+});
 
 module.exports.signUpUser = asyncWrapper(async (req, res) => {
   const { error, value } = userSchemaValidator.validate(req.body);
