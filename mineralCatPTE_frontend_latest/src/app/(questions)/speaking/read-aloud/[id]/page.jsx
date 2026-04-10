@@ -1,5 +1,5 @@
 "use client";
-import { use, useEffect, useState, useRef } from "react";
+import { use, useEffect, useState, useRef, useCallback } from "react";
 import fetchWithAuth from "@/lib/fetchWithAuth";
 import {
   getAssessmentMeta,
@@ -8,168 +8,179 @@ import {
   getQuestionAssessment,
 } from "@/lib/questionAssessment";
 import { useRouter } from "next/navigation";
-import {
-  CheckCircle,
-  XCircle,
-  TrendingUp,
-  Volume2,
-  Clock,
-  Target,
-} from "lucide-react";
 import MicRecorder from "mic-recorder-to-mp3";
 
 const RECORD_SECONDS = 35;
 
-function ResultModal({ isOpen, onClose, result }) {
-  if (!isOpen) return null;
-
-  const assessment = getQuestionAssessment(result, "read_aloud");
-  const speakingScore = getAssessmentSkill(assessment, "speaking")?.score ?? 0;
-  const readingScore = getAssessmentSkill(assessment, "reading")?.score ?? 0;
-  const contentScore = getAssessmentTrait(assessment, "content")?.score ?? 0;
-  const fluencyScore = getAssessmentTrait(assessment, "fluency")?.score ?? 0;
-  const pronunciationScore =
-    getAssessmentTrait(assessment, "pronunciation")?.score ?? 0;
-  const goodWords = getAssessmentMeta(assessment, "goodWords", 0);
-  const averageWords = getAssessmentMeta(assessment, "averageWords", 0);
-  const badWords = getAssessmentMeta(assessment, "badWords", 0);
+// ─── Score Gauge ────────────────────────────────────────────────────────────
+function ScoreGauge({ value, max = 100, label, color = "#810000" }) {
+  const pct = Math.min(100, Math.max(0, (value / max) * 100));
+  const r = 28;
+  const circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-auto border border-gray-200 overflow-hidden transform transition-all animate-in fade-in-0 zoom-in-95 duration-200">
-        <div className="bg-[#810000] p-4 text-white">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {result.success ? (
-                <CheckCircle className="h-6 w-6 text-green-300" />
-              ) : (
-                <XCircle className="h-6 w-6 text-red-300" />
-              )}
-              <h3 className="text-lg font-bold">Speaking Assessment Result</h3>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-white/80 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
-            >
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
+    <div className="flex flex-col items-center gap-1">
+      <svg width="72" height="72" viewBox="0 0 72 72">
+        <circle cx="36" cy="36" r={r} fill="none" stroke="#f3e8e8" strokeWidth="7" />
+        <circle
+          cx="36" cy="36" r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="7"
+          strokeDasharray={`${dash} ${circ}`}
+          strokeLinecap="round"
+          transform="rotate(-90 36 36)"
+          style={{ transition: "stroke-dasharray 0.8s cubic-bezier(.4,0,.2,1)" }}
+        />
+        <text x="36" y="40" textAnchor="middle" fontSize="13" fontWeight="700" fill={color}>
+          {Math.round(value)}
+        </text>
+      </svg>
+      <span className="text-xs font-semibold text-gray-600 text-center leading-tight">{label}</span>
+    </div>
+  );
+}
+
+// ─── Word Pill ───────────────────────────────────────────────────────────────
+function WordPill({ count, label, color }) {
+  return (
+    <div className={`flex flex-col items-center px-4 py-3 rounded-xl border-2 ${color}`}>
+      <span className="text-2xl font-bold">{count}</span>
+      <span className="text-xs font-medium mt-0.5 opacity-80">{label}</span>
+    </div>
+  );
+}
+
+// ─── Result Modal ────────────────────────────────────────────────────────────
+function ResultModal({ isOpen, onClose, result }) {
+  useEffect(() => {
+    document.body.style.overflow = isOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [isOpen]);
+
+  if (!isOpen || !result) return null;
+
+  const assessment  = getQuestionAssessment(result, "read_aloud");
+  const speakingScore   = getAssessmentSkill(assessment, "speaking")?.score ?? 0;
+  const readingScore    = getAssessmentSkill(assessment, "reading")?.score ?? 0;
+  const contentScore    = getAssessmentTrait(assessment, "content")?.score ?? 0;
+  const fluencyScore    = getAssessmentTrait(assessment, "fluency")?.score ?? 0;
+  const pronunciationScore = getAssessmentTrait(assessment, "pronunciation")?.score ?? 0;
+  const totalWords      = getAssessmentMeta(assessment, "totalWords", 0);
+  const goodWords       = getAssessmentMeta(assessment, "goodWords", 0);
+  const averageWords    = getAssessmentMeta(assessment, "averageWords", 0);
+  const badWords        = getAssessmentMeta(assessment, "badWords", 0);
+
+  const overallScore = Math.round((speakingScore + readingScore) / 2);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+        style={{ maxHeight: "90vh", overflowY: "auto" }}
+      >
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#7D0000] to-[#c0392b] px-6 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-white text-xl font-bold">Read Aloud — AI Score</h2>
+            <p className="text-white/75 text-sm mt-0.5">Powered by speech assessment AI</p>
           </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white font-bold transition"
+          >✕</button>
         </div>
 
-        <div className="p-4">
+        <div className="p-6 space-y-6">
           {result.success ? (
             <>
-              {/* Main Scores */}
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200 text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Volume2 className="h-4 w-4 text-blue-600" />
-                    <h4 className="font-medium text-blue-900 text-sm">
-                      Speaking Score
-                    </h4>
-                  </div>
-                  <p className="text-2xl font-bold text-blue-800">
-                    {Number(speakingScore).toFixed(1)}
-                  </p>
+              {/* Overall banner */}
+              <div className="bg-[#fff5f5] border border-[#f5c6c6] rounded-xl p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500 font-medium">Overall Score</p>
+                  <p className="text-5xl font-black text-[#810000] leading-none">{overallScore}<span className="text-xl font-semibold text-gray-400">/100</span></p>
                 </div>
-                <div className="bg-green-50 rounded-lg p-3 border border-green-200 text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Target className="h-4 w-4 text-green-600" />
-                    <h4 className="font-medium text-green-900 text-sm">
-                      Reading Score
-                    </h4>
+                <div className="text-right">
+                  <div className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${
+                    overallScore >= 70 ? "bg-green-100 text-green-700" :
+                    overallScore >= 45 ? "bg-yellow-100 text-yellow-700" :
+                    "bg-red-100 text-red-700"
+                  }`}>
+                    {overallScore >= 70 ? "Excellent ✓" : overallScore >= 45 ? "Good 👍" : "Needs Practice"}
                   </div>
-                  <p className="text-2xl font-bold text-green-800">
-                    {Number(readingScore).toFixed(2)}
-                  </p>
+                  <p className="text-xs text-gray-400 mt-1 font-medium">{totalWords} words detected</p>
                 </div>
               </div>
 
-              {/* Detailed Metrics */}
-              <div className="space-y-3 mb-4">
-                <div className="bg-purple-50 rounded-lg p-3 border-l-3 border-purple-400">
-                  <h4 className="font-medium text-purple-900 mb-2 text-sm flex items-center gap-1">
-                    <TrendingUp className="h-4 w-4" />
-                    Performance Metrics
-                  </h4>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-purple-700">Content:</span>
-                      <span className="font-medium text-purple-800">
-                        {contentScore}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-purple-700">Fluency:</span>
-                      <span className="font-medium text-purple-800">
-                        {fluencyScore}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between col-span-2">
-                      <span className="text-purple-700">Pronunciation:</span>
-                      <span className="font-medium text-purple-800">
-                        {Number(pronunciationScore).toFixed(1)}%
-                      </span>
-                    </div>
+              {/* Skill gauges */}
+              <div>
+                <p className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">Communicative Skills</p>
+                <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-xl p-4">
+                  <div className="flex flex-col items-center gap-1 bg-white rounded-lg p-3 shadow-sm">
+                    <ScoreGauge value={speakingScore} label="Speaking" color="#810000" />
+                  </div>
+                  <div className="flex flex-col items-center gap-1 bg-white rounded-lg p-3 shadow-sm">
+                    <ScoreGauge value={readingScore} label="Reading" color="#c0392b" />
                   </div>
                 </div>
+              </div>
 
-                <div className="bg-orange-50 rounded-lg p-3 border-l-3 border-orange-400">
-                  <h4 className="font-medium text-orange-900 mb-2 text-sm flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    Word Analysis
-                  </h4>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="text-center">
-                      <div className="text-green-600 font-bold text-lg">
-                        {goodWords}
-                      </div>
-                      <div className="text-green-700">Good</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-yellow-600 font-bold text-lg">
-                        {averageWords}
-                      </div>
-                      <div className="text-yellow-700">Average</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-red-600 font-bold text-lg">
-                        {badWords}
-                      </div>
-                      <div className="text-red-700">Needs Work</div>
-                    </div>
+              {/* Enabling skills */}
+              <div>
+                <p className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">Enabling Skills</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-blue-50 rounded-xl p-3 text-center">
+                    <p className="text-xl font-black text-blue-700">{Math.round(contentScore)}<span className="text-sm font-medium">%</span></p>
+                    <p className="text-xs font-semibold text-blue-600 mt-0.5">Content</p>
+                  </div>
+                  <div className="bg-purple-50 rounded-xl p-3 text-center">
+                    <p className="text-xl font-black text-purple-700">{Math.round(fluencyScore)}<span className="text-sm font-medium">%</span></p>
+                    <p className="text-xs font-semibold text-purple-600 mt-0.5">Fluency</p>
+                  </div>
+                  <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                    <p className="text-xl font-black text-emerald-700">{Math.round(pronunciationScore)}<span className="text-sm font-medium">%</span></p>
+                    <p className="text-xs font-semibold text-emerald-600 mt-0.5">Pronunciation</p>
                   </div>
                 </div>
+              </div>
+
+              {/* Word quality */}
+              <div>
+                <p className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">Word Quality Analysis</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <WordPill count={goodWords}    label="Good"    color="border-green-300 bg-green-50 text-green-700" />
+                  <WordPill count={averageWords} label="Average" color="border-yellow-300 bg-yellow-50 text-yellow-700" />
+                  <WordPill count={badWords}     label="Poor"    color="border-red-300 bg-red-50 text-red-700" />
+                </div>
+              </div>
+
+              {/* Tips */}
+              <div className="bg-[#fffbea] border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
+                <p className="font-bold mb-1">💡 Tips to improve</p>
+                {pronunciationScore < 60 && <p>• Work on pronunciation accuracy with native audio models.</p>}
+                {fluencyScore < 60 && <p>• Practice reading aloud daily to build natural rhythm and pace.</p>}
+                {contentScore < 60 && <p>• Ensure all words are clearly spoken — avoid skipping words.</p>}
+                {speakingScore >= 70 && readingScore >= 70 && <p>• Great performance! Keep practising to maintain consistency.</p>}
               </div>
             </>
           ) : (
-            <div className="text-center py-4">
-              <div className="text-red-500 text-lg font-medium mb-2">
-                Assessment Failed
-              </div>
-              <p className="text-gray-600 text-sm">
-                Unable to process your recording. Please try again.
-              </p>
+            <div className="text-center py-8">
+              <div className="text-5xl mb-3">😕</div>
+              <p className="text-red-600 font-semibold text-lg">Assessment failed</p>
+              <p className="text-gray-500 text-sm mt-2">Could not process your recording. Please try again with a clearer microphone.</p>
             </div>
           )}
 
           <button
             onClick={onClose}
-            className="w-full py-2.5 bg-[#810000] text-white rounded-lg hover:bg-[#6a0000] transition font-medium text-sm"
+            className="w-full py-3 bg-[#810000] hover:bg-[#6a0000] text-white rounded-xl font-semibold transition"
           >
-            Continue
+            Close & Continue
           </button>
         </div>
       </div>
@@ -177,279 +188,253 @@ function ResultModal({ isOpen, onClose, result }) {
   );
 }
 
-export default function DynamicPage({ params }) {
+// ─── Main Page ───────────────────────────────────────────────────────────────
+export default function ReadAloudPage({ params }) {
   const { id } = use(params);
-  const router = useRouter();
   const baseUrl = process.env.NEXT_PUBLIC_URL || "";
-  const recorder = useRef(null);
-  const timerRef = useRef();
+  const recorderRef = useRef(null);
+  const timerRef    = useRef(null);
 
-  const [question, setQuestion] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [timeLeft, setTimeLeft] = useState(RECORD_SECONDS);
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState(null);
-  const [mp3URL, setMp3URL] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showResultModal, setShowResultModal] = useState(false);
-  const [result, setResult] = useState({
-    success: false,
-    data: null,
-  });
+  const [question,       setQuestion]       = useState(null);
+  const [loading,        setLoading]        = useState(true);
+  const [timeLeft,       setTimeLeft]       = useState(RECORD_SECONDS);
+  const [isRecording,    setIsRecording]    = useState(false);
+  const [audioBlob,      setAudioBlob]      = useState(null);
+  const [mp3URL,         setMp3URL]         = useState(null);
+  const [isSubmitting,   setIsSubmitting]   = useState(false);
+  const [showModal,      setShowModal]      = useState(false);
+  const [result,         setResult]         = useState(null);
+  const [error,          setError]          = useState("");
 
   // Fetch question
   useEffect(() => {
-    async function getQuestion() {
+    async function load() {
       setLoading(true);
       try {
-        const res = await fetchWithAuth(`${baseUrl}/user/get-question/${id}`);
+        const res  = await fetchWithAuth(`${baseUrl}/user/get-question/${id}`);
         const data = await res.json();
-        setQuestion(data?.question || null);
-      } catch (error) {
-        console.error("Failed to fetch question:", error);
+        setQuestion(data?.question ?? null);
+      } catch {
         setQuestion(null);
       }
       setLoading(false);
-      setTimeLeft(RECORD_SECONDS);
-      setAudioBlob(null);
-      setIsRecording(false);
+      reset();
     }
-    getQuestion();
-  }, [id, baseUrl]);
+    load();
+    // eslint-disable-next-line
+  }, [id]);
 
-  // Timer logic
+  // Countdown while recording
   useEffect(() => {
     if (!isRecording) return;
-    if (timeLeft === 0) {
-      stopRecording();
-      return;
-    }
-    timerRef.current = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
+    if (timeLeft === 0) { stopRecording(); return; }
+    timerRef.current = setTimeout(() => setTimeLeft(t => t - 1), 1000);
     return () => clearTimeout(timerRef.current);
   }, [isRecording, timeLeft]);
 
-  // Start recording
-  const startRecording = () => {
-    recorder.current = new MicRecorder({ bitRate: 128 });
-    recorder.current
-      .start()
-      .then(() => {
-        setIsRecording(true);
-        setTimeLeft(RECORD_SECONDS);
-      })
-      .catch((e) => console.error("Recording failed:", e));
-  };
+  const reset = useCallback(() => {
+    setTimeLeft(RECORD_SECONDS);
+    setIsRecording(false);
+    setAudioBlob(null);
+    setMp3URL(null);
+    setError("");
+  }, []);
 
-  // Stop recording
-  const stopRecording = () => {
-    if (!recorder.current) return;
+  const startRecording = useCallback(async () => {
+    try {
+      recorderRef.current = new MicRecorder({ bitRate: 128 });
+      await recorderRef.current.start();
+      setAudioBlob(null);
+      setMp3URL(null);
+      setTimeLeft(RECORD_SECONDS);
+      setIsRecording(true);
+      setError("");
+    } catch {
+      setError("Microphone access denied. Please allow microphone permission.");
+    }
+  }, []);
 
-    recorder.current
-      .stop()
-      .getMp3()
-      .then(([buffer, blob]) => {
+  const stopRecording = useCallback(() => {
+    if (!recorderRef.current) return;
+    recorderRef.current.stop().getMp3()
+      .then(([, blob]) => {
         setAudioBlob(blob);
         setMp3URL(URL.createObjectURL(blob));
         setIsRecording(false);
       })
-      .catch((e) => console.error("Stopping recording failed:", e));
-  };
+      .catch(() => {
+        setIsRecording(false);
+        setError("Failed to stop recording. Please try again.");
+      });
+  }, []);
 
-  // Submit recording
-  const handleSubmit = async () => {
-    if (!audioBlob || !question) return;
-
+  const handleSubmit = useCallback(async () => {
+    if (!audioBlob || !question || isSubmitting) return;
     setIsSubmitting(true);
+    setError("");
 
     const formData = new FormData();
-    formData.append("voice", audioBlob, "voice.mp3");
+    formData.append("voice",      audioBlob,    "voice.mp3");
     formData.append("questionId", question._id);
 
     try {
-      const res = await fetchWithAuth(
-        `${baseUrl}/test/speaking/read_aloud/result`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const res = await fetchWithAuth(`${baseUrl}/test/speaking/read_aloud/result`, {
+        method: "POST",
+        body:   formData,
+      });
 
       if (!res.ok) {
-        throw new Error(`Request failed with status ${res.status}`);
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || `Server error ${res.status}`);
       }
 
-      const resultData = await res.json();
-      console.log("📤 Full API Response:", resultData);
-      console.log("📊 Response Data:", resultData.data);
-      console.log("✅ Success Status:", resultData.success);
-      setResult(resultData);
-      setShowResultModal(true);
-    } catch (error) {
-      console.error("❌ Submission Error Details:", error);
-      console.error("❌ Error Message:", error.message);
-      setResult({
-        success: false,
-        data: null,
-      });
-      setShowResultModal(true);
+      const data = await res.json();
+      setResult(data);
+      setShowModal(true);
+    } catch (e) {
+      setError(e.message || "Submission failed. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [audioBlob, question, isSubmitting, baseUrl]);
 
-  if (loading || !question) {
+  if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[40vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#810000]"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#810000]" />
       </div>
     );
   }
 
+  if (!question) {
+    return (
+      <div className="flex justify-center items-center min-h-[40vh] text-gray-500">
+        Question not found.
+      </div>
+    );
+  }
+
+  const progress = ((RECORD_SECONDS - timeLeft) / RECORD_SECONDS) * 100;
+  const elapsed  = RECORD_SECONDS - timeLeft;
+  const fmt = s => `${String(Math.floor(s / 60)).padStart(2,"0")}:${String(s % 60).padStart(2,"0")}`;
+
   return (
-    <div className="w-full lg:max-w-[80%] mx-auto py-6 px-2 relative">
-      <div className="text-2xl font-semibold text-[#810000] border-b border-[#810000] pb-2 mb-6">
+    <div className="w-full lg:max-w-[80%] mx-auto py-6 px-4 relative">
+      <ResultModal isOpen={showModal} onClose={() => setShowModal(false)} result={result} />
+
+      {/* Title */}
+      <div className="text-2xl font-semibold text-[#810000] border-b border-[#810000] pb-2 mb-5">
         Read Aloud
       </div>
-
-      <p className="text-gray-700 mb-6">
-        Look at the text below. In 35 seconds, you must read this text aloud as
-        naturally and clearly as possible. You have 35 seconds to read aloud.
+      <p className="text-gray-600 mb-6 text-sm leading-relaxed">
+        Look at the text below. In {RECORD_SECONDS} seconds, you must read this text aloud as
+        naturally and clearly as possible. You have {RECORD_SECONDS} seconds to read aloud.
       </p>
 
-      {/* Question Info */}
-      <div className="flex items-center gap-2 mb-4">
-        <span className="rounded px-4 py-2 font-bold text-white bg-[#810000] text-base tracking-wide">
+      {/* Question heading */}
+      <div className="flex items-center gap-3 mb-4">
+        <span className="rounded-lg px-4 py-2 font-bold text-white bg-[#810000] text-sm tracking-wide">
           #{question._id}
         </span>
-        <span className="text-lg font-semibold text-[#810000]">
-          {question.heading}
-        </span>
+        <span className="text-lg font-semibold text-[#810000]">{question.heading}</span>
       </div>
 
-      {/* Timer */}
-      <div className="mb-4 flex items-center gap-3">
-        <span className="text-[#810000] font-medium text-base">
+      {/* Timer row */}
+      <div className="mb-4 flex items-center gap-2">
+        <span className={`font-medium text-base ${isRecording ? "text-red-600" : "text-[#810000]"}`}>
           {isRecording ? "Recording:" : "Beginning in"}
           <span className="font-bold ml-1">{timeLeft} sec</span>
         </span>
         {isRecording && (
-          <div className="flex items-center gap-2 text-red-600">
-            <div className="w-3 h-3 bg-red-600 rounded-full animate-pulse"></div>
-            <span className="text-sm font-medium">REC</span>
-          </div>
+          <span className="flex items-center gap-1.5 text-red-600 text-sm font-medium">
+            <span className="w-2.5 h-2.5 bg-red-600 rounded-full animate-pulse" />
+            REC
+          </span>
         )}
       </div>
 
-      {/* Prompt */}
-      <div className="border border-[#810000] rounded p-4 mb-4 bg-white text-gray-900 whitespace-pre-line">
+      {/* Prompt text */}
+      <div className="border border-[#810000] rounded-lg bg-white p-5 mb-5 text-gray-800 leading-relaxed text-base">
         {question.prompt}
       </div>
 
-      {/* Recorder UI */}
-      <div className="border border-[#810000] rounded p-4 mb-6 bg-[#faf9f9] flex flex-col items-center">
-        <div className="flex items-center w-full gap-2 mt-2">
-          <span className="text-xs text-gray-600">
-            {new Date((RECORD_SECONDS - timeLeft) * 1000)
-              .toISOString()
-              .substr(14, 5)}
-          </span>
-          <div className="flex-1 h-2 rounded bg-gray-200 overflow-hidden relative">
+      {/* Recorder panel */}
+      <div className="border border-[#810000] rounded-lg bg-[#faf9f9] p-5 mb-5">
+        {/* Progress bar */}
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs text-gray-500 w-10 text-right">{fmt(elapsed)}</span>
+          <div className="flex-1 h-2.5 rounded-full bg-gray-200 overflow-hidden">
             <div
-              className="h-2 rounded bg-[#810000] transition-all duration-200"
-              style={{
-                width: `${
-                  ((RECORD_SECONDS - timeLeft) / RECORD_SECONDS) * 100
-                }%`,
-              }}
+              className="h-2.5 rounded-full bg-[#810000] transition-all duration-500"
+              style={{ width: `${progress}%` }}
             />
           </div>
-          <span className="text-xs text-gray-600">
-            {new Date(RECORD_SECONDS * 1000).toISOString().substr(14, 5)}
-          </span>
+          <span className="text-xs text-gray-500 w-10">{fmt(RECORD_SECONDS)}</span>
         </div>
 
-        <div className="mt-2 text-center w-full text-gray-500 font-medium">
+        {/* Status label */}
+        <p className="text-center text-sm font-medium text-gray-500 mb-4">
           {isRecording
-            ? "Recording... Speak now"
+            ? "🎙 Recording… Speak clearly"
             : audioBlob
-            ? "Recording complete"
-            : "Click Start to record"}
-        </div>
+            ? "✅ Recording captured — press Submit to score"
+            : "Press Start to begin recording"}
+        </p>
 
-        {/* Audio Preview */}
+        {/* Audio preview */}
         {mp3URL && (
-          <div className="mt-3">
-            <audio controls className="w-full max-w-xs">
-              <source src={mp3URL} type="audio/mp3" />
-              Your browser does not support the audio element.
-            </audio>
+          <div className="mb-4 flex justify-center">
+            <audio controls src={mp3URL} className="w-full max-w-sm rounded" />
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm text-center">
+            {error}
           </div>
         )}
 
         {/* Controls */}
-        <div className="flex gap-3 mt-4 flex-wrap">
+        <div className="flex items-center justify-center gap-3 flex-wrap">
           <button
-            className="px-4 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 font-medium text-sm disabled:opacity-50"
-            onClick={() => {
-              setAudioBlob(null);
-              setMp3URL(null);
-              setTimeLeft(RECORD_SECONDS);
-              setIsRecording(false);
-            }}
+            onClick={reset}
             disabled={isRecording || isSubmitting}
+            className="px-5 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 font-medium text-sm disabled:opacity-40 transition"
           >
             Restart
           </button>
 
           <button
-            className={`px-4 py-1 rounded font-medium text-sm transition min-w-[80px] ${
-              isSubmitting
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                : "bg-[#810000] text-white hover:bg-[#5d0000]"
-            }`}
-            onClick={handleSubmit}
-            disabled={!audioBlob || isSubmitting}
-          >
-            {isSubmitting ? (
-              <div className="flex items-center gap-1">
-                <div className="animate-spin rounded-full h-3 w-3 border border-white border-t-transparent"></div>
-                <span>Submitting...</span>
-              </div>
-            ) : (
-              "Submit"
-            )}
-          </button>
-
-          <button
-            className="px-4 py-1 rounded bg-[#810000] text-white font-medium text-sm hover:bg-[#5d0000] disabled:bg-gray-300 disabled:text-gray-400"
-            onClick={() => {
-              if (!isRecording && timeLeft > 0) {
-                setTimeLeft(RECORD_SECONDS);
-                setAudioBlob(null);
-                setMp3URL(null);
-                startRecording();
-              }
-            }}
+            onClick={startRecording}
             disabled={isRecording || timeLeft === 0 || isSubmitting}
+            className="px-6 py-2 rounded-lg bg-[#810000] text-white font-semibold text-sm hover:bg-[#6a0000] disabled:opacity-40 transition"
           >
             Start
           </button>
 
           <button
-            className="px-4 py-1 rounded bg-gray-500 text-white font-medium text-sm hover:bg-gray-700 disabled:bg-gray-300 disabled:text-gray-400"
             onClick={stopRecording}
             disabled={!isRecording || isSubmitting}
+            className="px-6 py-2 rounded-lg bg-gray-600 text-white font-semibold text-sm hover:bg-gray-700 disabled:opacity-40 transition"
           >
             Stop
           </button>
+
+          <button
+            onClick={handleSubmit}
+            disabled={!audioBlob || isSubmitting}
+            className="px-7 py-2 rounded-lg bg-[#810000] text-white font-bold text-sm hover:bg-[#6a0000] disabled:opacity-40 transition flex items-center gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Scoring…
+              </>
+            ) : "Submit"}
+          </button>
         </div>
       </div>
-
-      <ResultModal
-        isOpen={showResultModal}
-        onClose={() => setShowResultModal(false)}
-        result={result}
-      />
     </div>
   );
 }
