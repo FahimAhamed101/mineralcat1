@@ -3,6 +3,7 @@ const { addSectionalMockTest, getAllSectionalMockTest, deleteSectionalMockTest, 
 
 const { isUserLoggedIn , isAdminUser} = require('../../middleware/middlewares');
 const createUploadMiddleware = require("../../middleware/upload");
+const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.webm', '.ogg', '.m4a'];
 
 router.post('/add', isUserLoggedIn, isAdminUser, addSectionalMockTest);
 
@@ -12,7 +13,7 @@ router.get('/getSingleSectionalMockTest/:id', isUserLoggedIn, getSingleSectional
 
 router.delete('/delete/:id', isUserLoggedIn, isAdminUser, deleteSectionalMockTest);
 
-router.post('/result-single-question', isUserLoggedIn, createUploadMiddleware(['.mp3', '.wav']).single('voice'), mockTestResult);
+router.post('/result-single-question', isUserLoggedIn, createUploadMiddleware(AUDIO_EXTENSIONS).single('voice'), mockTestResult);
 
 router.get('/get-mock-test-result/:mockTestId', isUserLoggedIn, getFormattedMockTestResult);
 

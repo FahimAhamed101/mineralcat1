@@ -258,6 +258,31 @@ function buildWordCounts(wordScoreList = [], goodMin = 90, averageMin = 60) {
   return { goodWords, averageWords, badWords };
 }
 
+function normalizeTranscriptWords(wordScoreList = [], goodMin = 90, averageMin = 60) {
+  return wordScoreList
+    .map((wordScore, index) => {
+      const text = String(
+        wordScore?.word ??
+        wordScore?.text ??
+        wordScore?.token ??
+        wordScore?.display ??
+        ''
+      ).trim();
+      if (!text) return null;
+
+      const score = getWordQualityScore(wordScore);
+      const level = score >= goodMin ? 'good' : score >= averageMin ? 'average' : 'poor';
+
+      return {
+        index,
+        text,
+        score,
+        level,
+      };
+    })
+    .filter(Boolean);
+}
+
 function getScriptedAccuracyFromWordScores(wordScoreList = [], expectedWordCount = 0) {
   const qualityScores = wordScoreList
     .map(getWordQualityScore)
@@ -349,16 +374,28 @@ function mapScriptedSpeechResponse(fullResponse, expectedText, goodWordMin = 90)
     average(wordScoreList.map(getWordQualityScore))
   );
   const fluency = toNumber(pteScore.fluency, 0);
-  const speakingScore = Math.round(average([pronunciation, fluency]));
+  const hasContentScore = readingAccuracy > 0;
+  const normalizedPronunciation = hasContentScore ? pronunciation : 0;
+  const normalizedFluency = hasContentScore ? fluency : 0;
+  const speakingScore = hasContentScore
+    ? Math.round(average([normalizedPronunciation, normalizedFluency]))
+    : 0;
+  const transcriptWords = normalizeTranscriptWords(wordScoreList, goodWordMin);
+  const transcript = transcriptWords.map((word) => word.text).join(' ');
+  const wordCounts = hasContentScore
+    ? buildWordCounts(wordScoreList, goodWordMin)
+    : { goodWords: 0, averageWords: 0, badWords: 0 };
 
   return {
     speakingScore,
-    readingScore: readingAccuracy,
-    content: readingAccuracy,
-    fluency,
-    pronunciation,
+    readingScore: hasContentScore ? readingAccuracy : 0,
+    content: hasContentScore ? readingAccuracy : 0,
+    fluency: normalizedFluency,
+    pronunciation: normalizedPronunciation,
     totalWords,
-    ...buildWordCounts(wordScoreList, goodWordMin),
+    transcript,
+    transcriptWords,
+    ...wordCounts,
   };
 }
 

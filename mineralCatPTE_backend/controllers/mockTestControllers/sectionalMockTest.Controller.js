@@ -55,6 +55,37 @@ const subtypeApiUrls = {
     listening_multiple_choice_single_answers: `${process.env.BACKENDURL}/test/listening/multiple-choice-single-answers/result`
 };
 
+function getInternalRequestError(error, fallbackMessage) {
+    const responseStatus = Number(error?.response?.status);
+    const responseData = error?.response?.data;
+    const responseDataText =
+        typeof responseData === "string"
+            ? responseData
+            : responseData
+                ? JSON.stringify(responseData)
+                : "";
+    const responseMessage =
+        responseData?.message ||
+        responseData?.error ||
+        responseDataText ||
+        error?.message ||
+        fallbackMessage;
+
+    console.error("Sectional mock test internal request failed:", {
+        url: error?.config?.url,
+        method: error?.config?.method,
+        status: responseStatus || null,
+        message: error?.message,
+        responseData: responseData || null,
+    });
+
+    if (Number.isFinite(responseStatus) && responseStatus >= 400) {
+        return new ExpressError(responseStatus, responseMessage);
+    }
+
+    return new ExpressError(500, responseMessage || fallbackMessage);
+}
+
 module.exports.addSectionalMockTest = asyncWrapper(async (req, res) => {
     const { error, value } = sectionalMockTestSchemaValidator.validate(req.body);
     if (error) {
@@ -236,20 +267,28 @@ module.exports.mockTestResult = async (req, res, next) => {
                 }
                 form.append('voice', fs.createReadStream(req.file.path));
 
-                response = await axios.post(apiUrl, form, {
-                    headers: {
-                        ...form.getHeaders(),
-                        ...requestHeaders,
-                    },
-                });
-
-                fs.unlink(req.file.path, err => {
-                    if (err) console.warn('Failed to delete file:', err);
-                });
+                try {
+                    response = await axios.post(apiUrl, form, {
+                        headers: {
+                            ...form.getHeaders(),
+                            ...requestHeaders,
+                        },
+                    });
+                } catch (error) {
+                    throw getInternalRequestError(error, 'Failed to score sectional mock test audio answer');
+                } finally {
+                    fs.unlink(req.file.path, err => {
+                        if (err) console.warn('Failed to delete file:', err);
+                    });
+                }
             } else {
-                response = await axios.post(apiUrl, newData, {
-                    headers: requestHeaders,
-                });
+                try {
+                    response = await axios.post(apiUrl, newData, {
+                        headers: requestHeaders,
+                    });
+                } catch (error) {
+                    throw getInternalRequestError(error, 'Failed to score sectional mock test answer');
+                }
             }
 
             scoreData = response.data;

@@ -1,6 +1,18 @@
 const multer = require('multer');
 const path = require('path');
 
+const MIME_TYPE_EXTENSION_MAP = {
+    'audio/mpeg': '.mp3',
+    'audio/mp3': '.mp3',
+    'audio/wav': '.wav',
+    'audio/x-wav': '.wav',
+    'audio/webm': '.webm',
+    'audio/ogg': '.ogg',
+    'audio/mp4': '.m4a',
+    'audio/x-m4a': '.m4a',
+    'video/webm': '.webm',
+};
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         cb(null, 'uploads');
@@ -21,7 +33,9 @@ const createUploadMiddleware = (allowedExtensions) => {
         limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
         fileFilter: (req, file, cb) => {
             const ext = path.extname(file.originalname).toLowerCase();
-            if (allowedExtensions.includes(ext)) {
+            const normalizedMimeExtension = MIME_TYPE_EXTENSION_MAP[String(file.mimetype || '').toLowerCase()];
+
+            if (allowedExtensions.includes(ext) || (normalizedMimeExtension && allowedExtensions.includes(normalizedMimeExtension))) {
                 cb(null, true);
             } else {
                 cb(new Error(`Only ${allowedExtensions.join(', ')} files are allowed!`));

@@ -6,6 +6,19 @@ const ExpressError = require('../utils/ExpressError');
 
 const SPEECHACE_BASE_URL = process.env.SPEECHACE_BASE_URL || 'https://api.speechace.co';
 
+function mapSpeechAceErrorMessage(prefix, errorMessage) {
+  const normalizedMessage = String(errorMessage || '');
+
+  if (
+    normalizedMessage.includes('error_no_speech') ||
+    normalizedMessage.includes('No speech is detected')
+  ) {
+    return `${prefix}: no speech was detected in the recording. Please record again with a clearer, longer response.`;
+  }
+
+  return `${prefix}: ${normalizedMessage}`;
+}
+
 function getSpeechAceApiKey() {
   const apiKey = process.env.SPEECHACE_API_KEY;
   if (!apiKey) {
@@ -69,7 +82,7 @@ async function scoreScriptedSpeech({ audioFilePath, expectedText, accent = 'us' 
       ? JSON.stringify(error.response.data)
       : error.message;
 
-    throw new ExpressError(500, `SpeechAce scripted speech scoring failed: ${errorMessage}`);
+    throw new ExpressError(500, mapSpeechAceErrorMessage('SpeechAce scripted speech scoring failed', errorMessage));
   }
 }
 
@@ -107,7 +120,7 @@ async function scoreOpenEndedSpeech({ audioFilePath, relevanceContext, accent = 
       ? JSON.stringify(error.response.data)
       : error.message;
 
-    throw new ExpressError(500, `SpeechAce open-ended speech scoring failed: ${errorMessage}`);
+    throw new ExpressError(500, mapSpeechAceErrorMessage('SpeechAce open-ended speech scoring failed', errorMessage));
   }
 }
 
