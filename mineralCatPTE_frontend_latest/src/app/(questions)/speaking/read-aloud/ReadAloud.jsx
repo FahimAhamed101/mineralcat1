@@ -171,10 +171,12 @@ export default function ReadAloud() {
               data.map((item) => (
                 <div
                   key={item._id}
-                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-[#810000] bg-[#F8F8F8] rounded-md px-2 py-3 sm:px-6 sm:py-4 gap-2 sm:gap-3"
+                  className="flex cursor-pointer flex-col sm:flex-row items-start sm:items-center justify-between border border-[#810000] bg-[#F8F8F8] rounded-md px-2 py-3 sm:px-6 sm:py-4 gap-2 sm:gap-3"
                   style={{
                     wordBreak: "break-word",
                   }}
+                  
+                   onClick={() => handleAppearedClick(item)}
                 >
                   <div className="flex-1 w-full flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 min-w-0">
                     <div className="flex items-center gap-2">

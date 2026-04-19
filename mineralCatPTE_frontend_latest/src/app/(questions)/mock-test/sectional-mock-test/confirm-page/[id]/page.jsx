@@ -24,6 +24,30 @@ import MockScoreReportModal from "@/components/mock-test/MockScoreReportModal";
 
 const RECORD_SECONDS = 35;
 
+const getSupportedRecordingMimeType = () => {
+  if (typeof MediaRecorder === "undefined") return "";
+
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/mp4",
+  ];
+
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "";
+};
+
+const getAudioUploadFileName = (blob) => {
+  const mimeType = String(blob?.type || "").toLowerCase();
+
+  if (mimeType.includes("webm")) return "voice.webm";
+  if (mimeType.includes("ogg")) return "voice.ogg";
+  if (mimeType.includes("mp4") || mimeType.includes("m4a")) return "voice.m4a";
+  if (mimeType.includes("wav")) return "voice.wav";
+
+  return "voice.mp3";
+};
+
 const hasMeaningfulAnswer = (value) => {
   if (value instanceof Blob) {
     return value.size > 0;
@@ -88,6 +112,8 @@ const ReadAloudComponent = ({ question, onAnswer }) => {
   const [audioBlob, setAudioBlob] = useState(null);
   const [mp3URL, setMp3URL] = useState(null);
   const recorder = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
   const timerRef = useRef();
 
   // Clear audio when question changes
@@ -116,32 +142,69 @@ const ReadAloudComponent = ({ question, onAnswer }) => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
     };
   }, []);
 
-  const startRecording = useCallback(() => {
-    recorder.current = new MicRecorder({ bitRate: 128 });
-    recorder.current
-      .start()
-      .then(() => {
-        setIsRecording(true);
-        setRecordingTime(RECORD_SECONDS);
-      })
-      .catch((e) => console.error("Recording failed:", e));
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      const mimeType = getSupportedRecordingMimeType();
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      chunksRef.current = [];
+      streamRef.current = stream;
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.current = mediaRecorder;
+      mediaRecorder.start(250);
+      setIsRecording(true);
+      setRecordingTime(RECORD_SECONDS);
+    } catch (e) {
+      console.error("Recording failed:", e);
+    }
   }, []);
 
   const stopRecording = useCallback(() => {
     if (!recorder.current) return;
-    recorder.current
-      .stop()
-      .getMp3()
-      .then(([buffer, blob]) => {
-        setAudioBlob(blob);
-        setMp3URL(URL.createObjectURL(blob));
-        setIsRecording(false);
-        onAnswer(blob);
-      })
-      .catch((e) => console.error("Stopping recording failed:", e));
+    const mediaRecorder = recorder.current;
+
+    mediaRecorder.onstop = () => {
+      const fallbackMimeType = getSupportedRecordingMimeType() || "audio/webm";
+      const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType || fallbackMimeType });
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+
+      setAudioBlob(blob);
+      setMp3URL(URL.createObjectURL(blob));
+      setIsRecording(false);
+      onAnswer(blob);
+    };
+
+    try {
+      mediaRecorder.stop();
+    } catch (e) {
+      console.error("Stopping recording failed:", e);
+    }
   }, [onAnswer]);
 
   const restart = useCallback(() => {
@@ -1820,7 +1883,7 @@ export default function DynamicMockTest({ params }) {
       if (answer instanceof Blob) {
         // For audio files
         const formData = new FormData();
-        formData.append("voice", answer, "voice.mp3");
+        formData.append("voice", answer, getAudioUploadFileName(answer));
         formData.append("questionId", questionId);
         formData.append("mockTestId", mockTestId);
         formData.append("attemptId", currentAttemptId);

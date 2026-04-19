@@ -23,6 +23,45 @@ import fetchWithAuth from "@/lib/fetchWithAuth";
 import MockScoreReportModal from "@/components/mock-test/MockScoreReportModal";
 
 const RECORD_SECONDS = 35;
+const MIN_RECORDING_DURATION_SECONDS = 2;
+
+const getSupportedRecordingMimeType = () => {
+  if (typeof MediaRecorder === "undefined") return "";
+
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/mp4",
+  ];
+
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "";
+};
+
+const getAudioUploadFileName = (blob) => {
+  const mimeType = String(blob?.type || "").toLowerCase();
+
+  if (mimeType.includes("webm")) return "voice.webm";
+  if (mimeType.includes("ogg")) return "voice.ogg";
+  if (mimeType.includes("mp4") || mimeType.includes("m4a")) return "voice.m4a";
+  if (mimeType.includes("wav")) return "voice.wav";
+
+  return "voice.mp3";
+};
+
+const getFriendlySpeechErrorMessage = (message) => {
+  const normalizedMessage = String(message || "");
+
+  if (
+    normalizedMessage.includes("error_no_speech") ||
+    normalizedMessage.toLowerCase().includes("no speech was detected") ||
+    normalizedMessage.toLowerCase().includes("no speech is detected")
+  ) {
+    return "No speech was detected in the recording. Please record again and speak clearly for at least 2 seconds.";
+  }
+
+  return normalizedMessage || "Failed to submit answer";
+};
 
 const hasMeaningfulAnswer = (value) => {
   if (value instanceof Blob) {
@@ -87,7 +126,10 @@ const ReadAloudComponent = ({ question, onAnswer, clearTrigger }) => {
   const [recordingTime, setRecordingTime] = useState(RECORD_SECONDS);
   const [audioBlob, setAudioBlob] = useState(null);
   const [mp3URL, setMp3URL] = useState(null);
+  const [recordingError, setRecordingError] = useState("");
   const recorder = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
   const timerRef = useRef();
 
   // Clear component state when clearTrigger changes
@@ -97,6 +139,7 @@ const ReadAloudComponent = ({ question, onAnswer, clearTrigger }) => {
       setMp3URL(null);
       setRecordingTime(RECORD_SECONDS);
       setIsRecording(false);
+      setRecordingError("");
       onAnswer(null);
     }
   }, [clearTrigger, onAnswer]);
@@ -116,39 +159,94 @@ const ReadAloudComponent = ({ question, onAnswer, clearTrigger }) => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
     };
   }, []);
 
-  const startRecording = useCallback(() => {
-    recorder.current = new MicRecorder({ bitRate: 128 });
-    recorder.current
-      .start()
-      .then(() => {
-        setIsRecording(true);
-        setRecordingTime(RECORD_SECONDS);
-      })
-      .catch((e) => console.error("Recording failed:", e));
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      const mimeType = getSupportedRecordingMimeType();
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      chunksRef.current = [];
+      streamRef.current = stream;
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.current = mediaRecorder;
+      mediaRecorder.start(250);
+      setIsRecording(true);
+      setRecordingTime(RECORD_SECONDS);
+      setRecordingError("");
+    } catch (e) {
+      console.error("Recording failed:", e);
+      setRecordingError("Microphone access failed. Please allow microphone permission and try again.");
+    }
   }, []);
 
   const stopRecording = useCallback(() => {
     if (!recorder.current) return;
-    recorder.current
-      .stop()
-      .getMp3()
-      .then(([buffer, blob]) => {
-        setAudioBlob(blob);
-        setMp3URL(URL.createObjectURL(blob));
+    const mediaRecorder = recorder.current;
+
+    mediaRecorder.onstop = () => {
+      const fallbackMimeType = getSupportedRecordingMimeType() || "audio/webm";
+      const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType || fallbackMimeType });
+      const recordedSeconds = RECORD_SECONDS - recordingTime;
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+
+      if (
+        recordedSeconds < MIN_RECORDING_DURATION_SECONDS ||
+        blob.size <= 0
+      ) {
+        setAudioBlob(null);
+        setMp3URL(null);
         setIsRecording(false);
-        onAnswer(blob);
-      })
-      .catch((e) => console.error("Stopping recording failed:", e));
-  }, [onAnswer]);
+        setRecordingError("Your recording is too short to score reliably. Please speak clearly for at least 2 seconds.");
+        onAnswer(null);
+        return;
+      }
+
+      setAudioBlob(blob);
+      setMp3URL(URL.createObjectURL(blob));
+      setIsRecording(false);
+      setRecordingError("");
+      onAnswer(blob);
+    };
+
+    try {
+      mediaRecorder.stop();
+    } catch (e) {
+      console.error("Stopping recording failed:", e);
+      setRecordingError("Failed to stop recording. Please try again.");
+    }
+  }, [onAnswer, recordingTime]);
 
   const restart = useCallback(() => {
     setAudioBlob(null);
     setMp3URL(null);
     setRecordingTime(RECORD_SECONDS);
     setIsRecording(false);
+    setRecordingError("");
     onAnswer(null);
   }, [onAnswer]);
 
@@ -212,6 +310,12 @@ const ReadAloudComponent = ({ question, onAnswer, clearTrigger }) => {
           </audio>
         </div>
       )}
+
+      {recordingError ? (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {recordingError}
+        </div>
+      ) : null}
       
       {/* Controls */}
       <div className="flex items-center gap-4">
@@ -1925,7 +2029,7 @@ export default function DynamicMockTest({ params }) {
       if (answer instanceof Blob) {
         // For audio files
         const formData = new FormData();
-        formData.append("voice", answer, "voice.mp3");
+        formData.append("voice", answer, getAudioUploadFileName(answer));
         formData.append("questionId", questionId);
         formData.append("mockTestId", mockTestId);
         formData.append("attemptId", currentAttemptId);
@@ -1953,7 +2057,7 @@ export default function DynamicMockTest({ params }) {
 
       if (!response?.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData?.message || "Failed to submit answer");
+        throw new Error(getFriendlySpeechErrorMessage(errorData?.message));
       }
     } catch (error) {
       console.error("Failed to submit answer:", error);
