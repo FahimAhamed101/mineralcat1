@@ -1,7 +1,9 @@
 const questionModel = require('../../../models/questions.model');
 const practicedModel = require('../../../models/practiced.model');
 const ExpressError = require('../../../utils/ExpressError');
+const fs = require('node:fs');
 const fsPromises = require('fs').promises;
+const { OpenAI } = require('openai');
 const {
   buildReadAloudAssessment,
   buildRespondToSituationAssessment,
@@ -10,6 +12,22 @@ const {
   scoreScriptedSpeech,
   scoreOpenEndedSpeech,
 } = require('../../../services/speechace.service');
+
+let openaiClient = null;
+
+function getOpenAIClient() {
+  if (openaiClient) {
+    return openaiClient;
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new ExpressError(500, 'OPENAI_API_KEY is not configured');
+  }
+
+  openaiClient = new OpenAI({ apiKey });
+  return openaiClient;
+}
 
 function normalizeIndexedBlankAnswers(answer) {
   if (Array.isArray(answer)) {
@@ -228,6 +246,24 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function extractJsonObject(content) {
+  if (typeof content !== 'string') {
+    throw new ExpressError(500, 'Invalid model response format');
+  }
+
+  const trimmedContent = content.trim();
+  const fencedMatch = trimmedContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = fencedMatch ? fencedMatch[1].trim() : trimmedContent;
+  const objectStart = candidate.indexOf('{');
+  const objectEnd = candidate.lastIndexOf('}');
+
+  if (objectStart === -1 || objectEnd === -1 || objectEnd < objectStart) {
+    throw new ExpressError(500, 'Model response did not contain a JSON object');
+  }
+
+  return JSON.parse(candidate.slice(objectStart, objectEnd + 1));
+}
+
 function getExpectedWordCount(text = '') {
   return String(text)
     .trim()
@@ -374,14 +410,15 @@ function mapScriptedSpeechResponse(fullResponse, expectedText, goodWordMin = 90)
     average(wordScoreList.map(getWordQualityScore))
   );
   const fluency = toNumber(pteScore.fluency, 0);
-  const hasContentScore = readingAccuracy > 0;
+  const transcriptWords = normalizeTranscriptWords(wordScoreList, goodWordMin);
+  const transcript = transcriptWords.map((word) => word.text).join(' ');
+  const hasMeaningfulTranscript = hasMeaningfulSpeechTranscript(transcript);
+  const hasContentScore = readingAccuracy > 0 && hasMeaningfulTranscript;
   const normalizedPronunciation = hasContentScore ? pronunciation : 0;
   const normalizedFluency = hasContentScore ? fluency : 0;
   const speakingScore = hasContentScore
     ? Math.round(average([normalizedPronunciation, normalizedFluency]))
     : 0;
-  const transcriptWords = normalizeTranscriptWords(wordScoreList, goodWordMin);
-  const transcript = transcriptWords.map((word) => word.text).join(' ');
   const wordCounts = hasContentScore
     ? buildWordCounts(wordScoreList, goodWordMin)
     : { goodWords: 0, averageWords: 0, badWords: 0 };
@@ -392,9 +429,226 @@ function mapScriptedSpeechResponse(fullResponse, expectedText, goodWordMin = 90)
     content: hasContentScore ? readingAccuracy : 0,
     fluency: normalizedFluency,
     pronunciation: normalizedPronunciation,
+    totalWords: hasContentScore ? totalWords : 0,
+    transcript: hasContentScore ? transcript : '',
+    transcriptWords: hasContentScore ? transcriptWords : [],
+    ...wordCounts,
+  };
+}
+
+function isNoSpeechDetectedError(error) {
+  const message = String(error?.message || '').toLowerCase();
+
+  return (
+    message.includes('error_no_speech') ||
+    message.includes('no speech was detected') ||
+    message.includes('no speech is detected')
+  );
+}
+
+function buildEmptyRepeatSentenceResponse() {
+  return {
+    speakingScore: 0,
+    listeningScore: 0,
+    content: 0,
+    fluency: 0,
+    pronunciation: 0,
+    predictedText: '',
+    transcript: '',
+    transcriptWords: [],
+    totalWords: 0,
+    goodWords: 0,
+    averageWords: 0,
+    badWords: 0,
+    noSpeechDetected: true,
+  };
+}
+
+function buildEmptyRespondToSituationResponse() {
+  return {
+    speakingScore: 0,
+    taskScore: 0,
+    readingScore: 0,
+    content: 0,
+    appropriacy: 0,
+    fluency: 0,
+    pronunciation: 0,
+    totalTraitScore: 0,
+    traitScaleMax: 5,
+    predictedText: '',
+    relevanceClass: null,
+    totalWords: 0,
+    goodWords: 0,
+    averageWords: 0,
+    badWords: 0,
+    noSpeechDetected: true,
+  };
+}
+
+function isFeatureUnavailableError(error) {
+  const message = String(error?.message || '').toLowerCase();
+
+  return (
+    message.includes('error_feature_unavailable') ||
+    message.includes('feature is not available in your purchased plan')
+  );
+}
+
+function normalizeTraitScore(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+
+  return clamp(Math.round(numericValue), 0, 5);
+}
+
+function buildTranscriptWordCounts(transcript = '') {
+  const totalWords = String(transcript)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+
+  return {
     totalWords,
-    transcript,
-    transcriptWords,
+    goodWords: 0,
+    averageWords: totalWords,
+    badWords: 0,
+  };
+}
+
+function normalizeTranscriptTokens(transcript = '') {
+  return String(transcript)
+    .toLowerCase()
+    .replace(/[^a-z0-9'\s]/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function hasMeaningfulSpeechTranscript(transcript = '') {
+  const fillerWords = new Set([
+    'a',
+    'ah',
+    'ahh',
+    'ahhh',
+    'am',
+    'er',
+    'erm',
+    'hmm',
+    'hm',
+    'mm',
+    'mmm',
+    'oh',
+    'uh',
+    'uhh',
+    'uhhh',
+    'um',
+    'umm',
+    'ummm',
+    'huh',
+    'noise',
+    'static',
+    'silence',
+  ]);
+
+  const tokens = normalizeTranscriptTokens(transcript);
+  if (tokens.length === 0) {
+    return false;
+  }
+
+  const meaningfulTokens = tokens.filter((token) => {
+    if (fillerWords.has(token)) {
+      return false;
+    }
+
+    return /[a-z0-9]{2,}/.test(token);
+  });
+
+  if (meaningfulTokens.length < 3) {
+    return false;
+  }
+
+  const joinedMeaningfulTranscript = meaningfulTokens.join(' ');
+  return joinedMeaningfulTranscript.length >= 8;
+}
+
+async function scoreRespondToSituationWithOpenAI({ audioFilePath, questionText }) {
+  const openai = getOpenAIClient();
+  const transcript = String(
+    await openai.audio.transcriptions.create({
+      file: fs.createReadStream(audioFilePath),
+      model: 'whisper-1',
+      response_format: 'text',
+    })
+  ).trim();
+
+  if (!hasMeaningfulSpeechTranscript(transcript)) {
+    return buildEmptyRespondToSituationResponse();
+  }
+
+  const prompt = `
+You are assessing a PTE Core "Respond to a Situation" speaking response.
+
+QUESTION / SITUATION:
+"${String(questionText || '').trim()}"
+
+USER RESPONSE TRANSCRIPT:
+"${transcript}"
+
+Score this response using these traits only:
+1. appropriacy: integer 0-5
+2. pronunciation: integer 0-5
+3. fluency: integer 0-5
+
+Rules:
+- If the response is blank, off-topic, or does not meaningfully answer the situation, appropriacy must be 0.
+- Use conservative scoring.
+- Because this fallback uses transcript-based evaluation, do not give pronunciation or fluency above 3 unless the transcript strongly suggests a clear, well-formed spoken response.
+- Return valid JSON only in this exact shape:
+{
+  "appropriacy": 0,
+  "pronunciation": 0,
+  "fluency": 0,
+  "relevanceClass": "TRUE"
+}
+`;
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4',
+    messages: [
+      {
+        role: 'system',
+        content: 'You are an expert assessor for PTE Core Respond to a Situation. Reply with valid JSON only.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.2,
+    max_tokens: 200,
+  });
+
+  const parsed = extractJsonObject(response.choices?.[0]?.message?.content || '');
+  const appropriacy = normalizeTraitScore(parsed.appropriacy);
+  const pronunciation = normalizeTraitScore(parsed.pronunciation);
+  const fluency = normalizeTraitScore(parsed.fluency);
+  const totalTraitScore = appropriacy + pronunciation + fluency;
+  const taskScore = Math.round((totalTraitScore / 15) * 100);
+  const speakingScore = taskScore;
+  const wordCounts = buildTranscriptWordCounts(transcript);
+
+  return {
+    speakingScore,
+    taskScore,
+    readingScore: 0,
+    content: appropriacy,
+    appropriacy,
+    fluency,
+    pronunciation,
+    totalTraitScore,
+    traitScaleMax: 5,
+    predictedText: transcript,
+    relevanceClass: parsed.relevanceClass || null,
+    usedFallbackScoring: true,
     ...wordCounts,
   };
 }
@@ -527,12 +781,25 @@ async function handleSpeechAssessment(req, res, expectedSubtype) {
 
     let responseData;
     if (expectedSubtype === 'respond_to_situation') {
-      const fullResponse = await scoreOpenEndedSpeech({
-        audioFilePath: userFilePath,
-        relevanceContext: question.prompt,
-        accent,
-      });
-      responseData = mapOpenEndedSpeechResponse(fullResponse);
+      try {
+        const fullResponse = await scoreOpenEndedSpeech({
+          audioFilePath: userFilePath,
+          relevanceContext: question.audioConvertedText || question.prompt,
+          accent,
+        });
+        responseData = mapOpenEndedSpeechResponse(fullResponse);
+      } catch (error) {
+        if (isNoSpeechDetectedError(error)) {
+          responseData = buildEmptyRespondToSituationResponse();
+        } else if (isFeatureUnavailableError(error)) {
+          responseData = await scoreRespondToSituationWithOpenAI({
+            audioFilePath: userFilePath,
+            questionText: question.audioConvertedText || question.prompt,
+          });
+        } else {
+          throw error;
+        }
+      }
     } else {
       const expectedText = question.prompt;
       const fullResponse = await scoreScriptedSpeech({
@@ -571,12 +838,15 @@ async function speakingReadAloudResult({ req, res }) {
 
 async function speakingevaluateRepeatSentenceResult({ userId, questionId, userFilePath, accent = 'us' }) {
   if (!questionId) throw new ExpressError(400, "questionId is required!");
-  if (!userFilePath) throw new ExpressError(400, "voice file path is required!");
 
   const question = await questionModel.findById(questionId);
   if (!question) throw new ExpressError(404, "Question Not Found!");
 
   const expectedText = question.audioConvertedText;
+
+  if (!userFilePath) {
+    return buildEmptyRepeatSentenceResponse();
+  }
 
   let finalResponse;
   try {
@@ -585,6 +855,13 @@ async function speakingevaluateRepeatSentenceResult({ userId, questionId, userFi
       expectedText,
       accent,
     });
+  } catch (error) {
+    if (isNoSpeechDetectedError(error)) {
+      await savePractice(userId, question);
+      return buildEmptyRepeatSentenceResponse();
+    }
+
+    throw error;
   } finally {
     await safeDeleteFile(userFilePath);
   }
@@ -605,7 +882,9 @@ async function speakingevaluateRepeatSentenceResult({ userId, questionId, userFi
     content: contentRelevance,
     fluency: mappedResponse.fluency,
     pronunciation: mappedResponse.pronunciation,
-    predictedText: "",
+    predictedText: mappedResponse.transcript,
+    transcript: mappedResponse.transcript,
+    transcriptWords: mappedResponse.transcriptWords,
     totalWords: mappedResponse.totalWords,
     goodWords: mappedResponse.goodWords,
     averageWords: mappedResponse.averageWords,

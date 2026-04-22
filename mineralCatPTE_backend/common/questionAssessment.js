@@ -142,7 +142,10 @@ function buildRepeatSentenceAssessment(data = {}) {
       goodWords: toNumber(data.goodWords, 0),
       averageWords: toNumber(data.averageWords, 0),
       badWords: toNumber(data.badWords, 0),
-      predictedText: data.predictedText || "",
+      predictedText: data.predictedText || data.transcript || "",
+      transcript: data.transcript || data.predictedText || "",
+      transcriptWords: Array.isArray(data.transcriptWords) ? data.transcriptWords : [],
+      noSpeechDetected: Boolean(data.noSpeechDetected),
     },
   });
 }
@@ -179,6 +182,8 @@ function buildRespondToSituationAssessment(data = {}) {
       badWords: toNumber(data.badWords, 0),
       predictedText: data.predictedText || "",
       relevanceClass: data.relevanceClass || null,
+      noSpeechDetected: Boolean(data.noSpeechDetected),
+      usedFallbackScoring: Boolean(data.usedFallbackScoring),
     },
   });
 }
@@ -253,6 +258,11 @@ function buildSummarizeWrittenTextAssessment(result = {}) {
       buildMetric({ key: "grammar", label: "Grammar", score: toNumber(result.grammar, 0), maxScore: 2 }),
       buildMetric({ key: "vocabularyRange", label: "Vocabulary", score: toNumber(result.vocabularyRange, 0), maxScore: 2 }),
     ],
+    meta: {
+      wordCount: toNumber(result.wordCount, 0),
+      noFurtherScoring: Boolean(result.noFurtherScoring),
+      gatingReason: result.gatingReason || "",
+    },
   });
 }
 

@@ -18,12 +18,38 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
+function clampScore(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
 function countWords(text = "") {
     return String(text)
         .trim()
         .split(/\s+/)
         .filter(Boolean)
         .length;
+}
+
+function extractJsonObject(content) {
+    if (typeof content !== "string") {
+        throw new Error("Invalid model response format");
+    }
+
+    const trimmedContent = content.trim();
+    const fencedMatch = trimmedContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const candidate = fencedMatch ? fencedMatch[1].trim() : trimmedContent;
+    const objectStart = candidate.indexOf("{");
+    const objectEnd = candidate.lastIndexOf("}");
+
+    if (objectStart === -1 || objectEnd === -1 || objectEnd < objectStart) {
+        throw new Error("Model response did not contain a JSON object");
+    }
+
+    return JSON.parse(candidate.slice(objectStart, objectEnd + 1));
+}
+
+function getSummarizeWrittenTextFormScore(wordCount) {
+    return wordCount >= 25 && wordCount <= 50 ? 2 : 0;
 }
 
 function getWriteEmailFormScore(wordCount) {
@@ -38,11 +64,42 @@ function getWriteEmailFormScore(wordCount) {
     return 0;
 }
 
-function enforceSummarizeWrittenTextScore(result = {}) {
-    const content = Number(result.content) || 0;
-    const form = Number(result.form) || 0;
-    const grammar = Number(result.grammar) || 0;
-    const vocabularyRange = Number(result.vocabularyRange) || 0;
+function enforceSummarizeWrittenTextScore(result = {}, answer = "") {
+    const wordCount = countWords(answer);
+    const content = clampScore(Number(result.content) || 0, 0, 2);
+    const grammar = clampScore(Number(result.grammar) || 0, 0, 2);
+    const vocabularyRange = clampScore(Number(result.vocabularyRange) || 0, 0, 2);
+    const form = getSummarizeWrittenTextFormScore(wordCount);
+    const isGibberish = Boolean(result.isGibberish);
+    const isRelevant = result.isRelevant !== false;
+    const feedback = String(result.feedback || "").trim();
+
+    if (isGibberish || !isRelevant || content === 0 || form === 0) {
+        const gatingReason = form === 0
+            ? "form"
+            : isGibberish
+                ? "gibberish"
+                : !isRelevant
+                    ? "content"
+                    : "content";
+
+        return {
+            ...result,
+            score: 0,
+            content: 0,
+            form,
+            grammar: 0,
+            vocabularyRange: 0,
+            wordCount,
+            noFurtherScoring: true,
+            gatingReason,
+            feedback: feedback || (
+                gatingReason === "form"
+                    ? "Your summary must be between 25 and 50 words. Because the form score is 0, the total score is 0."
+                    : "The response does not provide a meaningful summary of the passage, so the content score is 0 and the total score is 0."
+            ),
+        };
+    }
 
     return {
         ...result,
@@ -50,23 +107,28 @@ function enforceSummarizeWrittenTextScore(result = {}) {
         form,
         grammar,
         vocabularyRange,
-        score: content === 0 || form === 0
-            ? 0
-            : content + form + grammar + vocabularyRange,
+        wordCount,
+        noFurtherScoring: false,
+        gatingReason: "",
+        feedback,
+        score: content + form + grammar + vocabularyRange,
     };
 }
 
 function enforceWriteEmailScore(result = {}, answer = "") {
     const wordCount = countWords(answer);
-    const content = Number(result.content) || 0;
-    const grammar = Number(result.grammar) || 0;
-    const spelling = Number(result.spelling) || 0;
-    const organization = Number(result.organization) || 0;
-    const emailConvention = Number(result.emailConvention) || 0;
-    const vocabularyRange = Number(result.vocabularyRange) || 0;
+    const content = clampScore(Number(result.content) || 0, 0, 3);
+    const grammar = clampScore(Number(result.grammar) || 0, 0, 2);
+    const spelling = clampScore(Number(result.spelling) || 0, 0, 2);
+    const organization = clampScore(Number(result.organization) || 0, 0, 2);
+    const emailConvention = clampScore(Number(result.emailConvention) || 0, 0, 2);
+    const vocabularyRange = clampScore(Number(result.vocabularyRange) || 0, 0, 2);
     const form = getWriteEmailFormScore(wordCount);
+    const isGibberish = Boolean(result.isGibberish);
+    const isRelevant = result.isRelevant !== false;
+    const feedback = String(result.feedback || "").trim();
 
-    if (content === 0) {
+    if (content === 0 || isGibberish || !isRelevant) {
         return {
             ...result,
             content: 0,
@@ -78,8 +140,9 @@ function enforceWriteEmailScore(result = {}, answer = "") {
             vocabularyRange: 0,
             wordCount,
             noFurtherScoring: true,
-            gatingReason: "content",
+            gatingReason: isGibberish ? "gibberish" : "content",
             score: 0,
+            feedback: feedback || "The response does not provide a meaningful email for the task, so the content score is 0 and no further scoring is applied.",
         };
     }
 
@@ -97,6 +160,7 @@ function enforceWriteEmailScore(result = {}, answer = "") {
             noFurtherScoring: true,
             gatingReason: "form",
             score: 0,
+            feedback: feedback || "Your email must be between 30 and 140 words. Because the form score is 0, no further scoring is applied.",
         };
     }
 
@@ -112,6 +176,7 @@ function enforceWriteEmailScore(result = {}, answer = "") {
         wordCount,
         noFurtherScoring: false,
         gatingReason: "",
+        feedback,
         score: content + grammar + spelling + form + organization + emailConvention + vocabularyRange,
     };
 }
@@ -176,8 +241,9 @@ module.exports.getSummarizeWrittenText = asyncWrapper(async (req, res) => {
 
 module.exports.summarizeWrittenTextResult = asyncWrapper(async (req, res) => {
     const { questionId, answer } = req.body;
+    const trimmedAnswer = typeof answer === "string" ? answer.trim() : "";
 
-    if (!questionId || !answer) {
+    if (!questionId || !trimmedAnswer) {
         throw new ExpressError(400, "questionId and answer are required!");
     }
 
@@ -199,7 +265,7 @@ Original Paragraph:
 ${originalParagraph}
 
 User's Summary:
-${answer}
+${trimmedAnswer}
 
 Evaluate the response using these rules:
 - The response should stay within 25-50 words.
@@ -209,18 +275,19 @@ Evaluate the response using these rules:
   - Form (0-2)
   - Grammar (0-2)
   - Vocabulary (0-2)
+- A gibberish, nonsensical, copied-random, or clearly irrelevant response must receive Content = 0.
 - If Content = 0 or Form = 0, the overall Score must be 0.
 
-Return the result in exactly this format and nothing else:
-
-Score: X/8
-Enabling Skills:
-Content: X/2
-Form: X/2
-Grammar: X/2
-Vocabulary: X/2
-
-Feedback: Your feedback goes here
+Return valid JSON only in exactly this shape:
+{
+  "content": 0,
+  "form": 0,
+  "grammar": 0,
+  "vocabularyRange": 0,
+  "isGibberish": false,
+  "isRelevant": true,
+  "feedback": ""
+}
 `;
 
     try {
@@ -229,7 +296,7 @@ Feedback: Your feedback goes here
             messages: [
                 {
                     role: "system",
-                    content: "You are an expert assessor for PTE Core summarize written text responses."
+                    content: "You are an expert assessor for PTE Core summarize written text responses. Reply with valid JSON only."
                 },
                 {
                     role: "user",
@@ -237,11 +304,14 @@ Feedback: Your feedback goes here
                 }
             ],
             max_tokens: 500,
-            temperature: 0.7,
+            temperature: 0.2,
         });
 
         const gptResult = gptResponse.choices[0].message.content;
-        const parsedResult = enforceSummarizeWrittenTextScore(parseGPTResponse(gptResult));
+        const parsedResult = enforceSummarizeWrittenTextScore(
+            extractJsonObject(gptResult),
+            trimmedAnswer
+        );
 
         await practicedModel.findOneAndUpdate(
             {
@@ -460,50 +530,29 @@ Use these exact rubric bands:
 - If Content = 0 or Form = 0, the overall Score must be 0.
 - If Content = 0, return 0 for all remaining traits because there is no further scoring.
 - If Form = 0, return 0 for Email Conventions, Organization, Vocabulary, Grammar, and Spelling because there is no further scoring.
+- If the response is gibberish, random text, memorized filler, or clearly irrelevant to the task, treat it as Content = 0.
 
-Return the result in exactly this format and nothing else:
-
-Score: X/15
-Enabling Skills:
-Content: X/3
-Grammar: X/2
-Spelling: X/2
-Form: X/2
-Organization: X/2
-Email Conventions: X/2
-Vocabulary: X/2
-
-Feedback: Your feedback goes here
+Return valid JSON only in exactly this shape:
+{
+  "content": 0,
+  "grammar": 0,
+  "spelling": 0,
+  "form": 0,
+  "organization": 0,
+  "emailConvention": 0,
+  "vocabularyRange": 0,
+  "isGibberish": false,
+  "isRelevant": true,
+  "feedback": ""
+}
 `;
-
-    function parseGPTResponseForWriteEmail(responseText) {
-        const regex = /Score:\s*(\d+(\.\d+)?)\/15\s*Enabling Skills:\s*Content:\s*(\d+)\/3\s*Grammar:\s*(\d+)\/2\s*Spelling:\s*(\d+)\/2\s*Form:\s*(\d+)\/2\s*Organization:\s*(\d+)\/2\s*Email Conventions?:\s*(\d+)\/2\s*Vocabulary(?: Range)?:\s*(\d+)\/2\s*Feedback:\s*([\s\S]+)/i;
-
-        const matches = regex.exec(responseText);
-
-        if (!matches) {
-            throw new Error('Unable to parse GPT response');
-        }
-
-        return {
-            score: parseFloat(matches[1]),
-            content: parseInt(matches[3]),
-            grammar: parseInt(matches[4]),
-            spelling: parseInt(matches[5]),
-            form: parseFloat(matches[6]),
-            organization: parseInt(matches[7]),
-            emailConvention: parseInt(matches[8]),
-            vocabularyRange: parseInt(matches[9]),
-            feedback: matches[10].trim()
-        };
-    }
 
     const gptResponse = await openai.chat.completions.create({
         model: 'gpt-4',
         messages: [
             {
                 role: "system",
-                content: "You are an expert assessor for PTE Core write email responses."
+                content: "You are an expert assessor for PTE Core write email responses. Reply with valid JSON only."
             },
             {
                 role: "user",
@@ -511,12 +560,12 @@ Feedback: Your feedback goes here
             }
         ],
         max_tokens: 500,
-        temperature: 0.7,
+        temperature: 0.2,
     });
 
     const gptResult = gptResponse.choices[0].message.content;
     const parsedResult = enforceWriteEmailScore(
-        parseGPTResponseForWriteEmail(gptResult),
+        extractJsonObject(gptResult),
         trimmedAnswer
     );
 
