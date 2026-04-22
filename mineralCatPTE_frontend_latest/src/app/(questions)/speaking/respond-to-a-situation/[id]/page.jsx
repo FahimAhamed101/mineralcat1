@@ -198,6 +198,7 @@ export default function RespondToSituationPage({ params }) {
   // Audio player
   const [audioPlaying, setAudioPlaying] = useState(false);
   const audioRef = useRef();
+  const promptText = question?.audioConvertedText || question?.prompt || "";
 
   // MicRecorder instance
   const recorder = useRef(null);
@@ -298,10 +299,13 @@ export default function RespondToSituationPage({ params }) {
         }
       );
       const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message || "Failed to submit answer");
+      }
       setResult(data);
       setShowModal(true);
     } catch (e) {
-      alert("Something went wrong! Try again.");
+      alert(e?.message || "Something went wrong! Try again.");
     } finally {
       setSubmitLoading(false); // End loading
     }
@@ -357,7 +361,7 @@ export default function RespondToSituationPage({ params }) {
 
       {/* Prompt */}
       <div className="border border-[#810000] rounded p-4 mb-4 bg-white text-gray-900 whitespace-pre-line">
-        {question.prompt}
+        {promptText}
       </div>
 
       {/* Audio Recorder */}

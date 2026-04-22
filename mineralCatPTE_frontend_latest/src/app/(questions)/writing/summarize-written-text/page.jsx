@@ -44,8 +44,13 @@ export default function repeatSentence() {
     );
     const result = await response.json();
     if (result?.questions) {
+      const pageCount = Number(result?.questionsCount);
       setData(result.questions);
-      setTotalPages(Math.ceil(result.questionsCount / itemsPerPage));
+      setTotalPages(
+        Number.isFinite(pageCount) && pageCount > 0
+          ? Math.ceil(pageCount / itemsPerPage)
+          : 1
+      );
     } else {
       setData([]);
       setTotalPages(1);
@@ -187,8 +192,9 @@ export default function repeatSentence() {
                       </span>
                     </div>
                     <span
-                      className="text-gray-700 font-medium truncate w-full block text-[15px] sm:text-base"
+                      className="text-gray-700 font-medium cursor-pointer truncate w-full block text-[15px] sm:text-base"
                       title={item.heading}
+                       onClick={() => handleAppearedClick(item)}
                       style={{ maxWidth: "100%" }}
                     >
                       {trimText(
@@ -200,7 +206,7 @@ export default function repeatSentence() {
                   <div className="flex items-center gap-2 sm:gap-3 mt-1 sm:mt-0 w-full sm:w-auto justify-between sm:justify-end">
                     <button
                       onClick={() => handleAppearedClick(item)}
-                      className="bg-[#810000] text-white px-4 sm:px-6 py-1 rounded-full font-medium text-base min-w-[72px] sm:min-w-[90px] text-center shadow hover:bg-[#5d0000] transition"
+                      className="bg-[#810000] cursor-pointer text-white px-4 sm:px-6 py-1 rounded-full font-medium text-base min-w-[72px] sm:min-w-[90px] text-center shadow hover:bg-[#5d0000] transition"
                       tabIndex={0}
                       aria-label="Go to details"
                       style={{

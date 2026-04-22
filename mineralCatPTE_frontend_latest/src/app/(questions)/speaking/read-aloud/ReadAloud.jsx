@@ -44,8 +44,13 @@ export default function ReadAloud() {
     );
     const result = await response.json();
     if (result?.questions) {
+      const pageCount = Number(result?.questionsCount);
       setData(result.questions);
-      setTotalPages(Math.ceil(result.questionsCount / itemsPerPage));
+      setTotalPages(
+        Number.isFinite(pageCount) && pageCount > 0
+          ? Math.ceil(pageCount / itemsPerPage)
+          : 1
+      );
     } else {
       setData([]);
       setTotalPages(1);
@@ -187,9 +192,10 @@ export default function ReadAloud() {
                         |
                       </span>
                     </div>
-                    <span
-                      className="text-gray-700 font-medium truncate w-full block text-[15px] sm:text-base"
+                   <span
+                      className="text-gray-700 font-medium cursor-pointer truncate w-full block text-[15px] sm:text-base"
                       title={item.heading}
+                       onClick={() => handleAppearedClick(item)}
                       style={{ maxWidth: "100%" }}
                     >
                       {trimText(
