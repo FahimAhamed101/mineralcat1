@@ -318,6 +318,7 @@ module.exports.answerShortQuestionSchemaValidator = Joi.object(
         type: Joi.string().required(),
         subtype: Joi.string().required(),
         heading: Joi.string().required(),
+        correctText: Joi.string().allow("").optional(),
     }
 )
 
@@ -326,6 +327,7 @@ module.exports.editanswerShortQuestionSchemaValidator = Joi.object(
         type: Joi.string().optional(),
         subtype: Joi.string().optional(),
         heading: Joi.string().optional(),
+        correctText: Joi.string().allow("").optional(),
     }
 )
 

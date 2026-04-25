@@ -78,6 +78,60 @@ function normalizeYesNo(value) {
     return String(value || '').trim().toUpperCase() === 'YES' ? 'YES' : 'NO';
 }
 
+function normalizeComparableText(value) {
+    return String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function getAcceptedAnswerVariants(correctText) {
+    const raw = String(correctText || "").trim();
+    if (!raw) return [];
+
+    const variants = raw
+        .split(/\r?\n|\|/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+    return variants.length ? variants : [raw];
+}
+
+function buildDeterministicAnswerShortQuestionResult({ userText = "", correctText = "" } = {}) {
+    const normalizedUserText = normalizeComparableText(userText);
+    const acceptedAnswers = getAcceptedAnswerVariants(correctText);
+    const normalizedAcceptedAnswers = acceptedAnswers
+        .map((answer) => normalizeComparableText(answer))
+        .filter(Boolean);
+
+    const isCorrect =
+        Boolean(normalizedUserText) &&
+        normalizedAcceptedAnswers.some((answer) => answer === normalizedUserText);
+
+    const score = isCorrect ? 1 : 0;
+
+    return {
+        result: {
+            Speaking: score,
+            Listening: score,
+            EnablingSkills: isCorrect ? "YES" : "NO",
+            Fluency: score,
+            Pronunciation: score,
+        },
+        data: {
+            speakingScore: score,
+            listeningScore: score,
+            fluency: score,
+            pronunciation: score,
+            enablingSkills: isCorrect ? "YES" : "NO",
+            predictedText: userText,
+            correctText,
+            matchedExpectedAnswer: isCorrect,
+        },
+    };
+}
+
 function normalizeAnswerShortQuestionScores(rawResult = {}) {
     const normalizedResult = {
         Speaking: normalizeUnitScore(rawResult.Speaking ?? rawResult.speaking),
@@ -95,6 +149,9 @@ function normalizeAnswerShortQuestionScores(rawResult = {}) {
             fluency: normalizedResult.Fluency,
             pronunciation: normalizedResult.Pronunciation,
             enablingSkills: normalizedResult.EnablingSkills,
+            predictedText: rawResult.predictedText || "",
+            correctText: rawResult.correctText || "",
+            matchedExpectedAnswer: Boolean(rawResult.matchedExpectedAnswer),
         },
     };
 }
@@ -468,10 +525,10 @@ module.exports.addAnswerShortQuestion = asyncWrapper(async (req, res) => {
         throw new ExpressError(400, "question type or subtype is not valid!");
     }
 
-    const { type = 'speaking', subtype = 'answer_short_question', heading } = newData;
+    const { type = 'speaking', subtype = 'answer_short_question', heading, correctText = "" } = newData;
     const newQuestion = await addQuestion(
         answerShortQuestionSchemaValidator,
-        { type, subtype, heading },
+        { type, subtype, heading, correctText },
         req.user._id,
         req.file,
         'answerShortQuestion',
@@ -548,6 +605,33 @@ module.exports.answerShortQuestionResult = asyncWrapper(async (req, res) => {
 
         await safeDeleteFile(userFilePath);
         userFilePath = null;
+
+        const correctText = String(question.correctText || "").trim();
+        const deterministicResult = correctText
+            ? buildDeterministicAnswerShortQuestionResult({ userText, correctText })
+            : null;
+
+        if (deterministicResult) {
+            const normalizedResponse = deterministicResult;
+            await practicedModel.findOneAndUpdate(
+                {
+                    user: req.user._id,
+                    questionType: question.type,
+                    subtype: question.subtype
+                },
+                {
+                    $addToSet: { practicedQuestions: question._id }
+                },
+                { upsert: true, new: true }
+            );
+
+            return res.status(200).json({
+                success: true,
+                result: normalizedResponse.result,
+                data: normalizedResponse.data,
+                assessment: buildAnswerShortQuestionAssessment(normalizedResponse),
+            });
+        }
 
         const prompt = `
 You are an expert language assessor, and your task is to evaluate the speaking and listening abilities of a user based on a question prompt and their response. Below are the inputs:
