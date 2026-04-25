@@ -122,6 +122,42 @@ function getFriendlySpeechErrorMessage(message) {
   return normalizedMessage || "Submission failed. Please try again.";
 }
 
+function PreviousScoreCard({ item }) {
+  return (
+    <div className="rounded-2xl border border-[#bdeff3] bg-white px-5 py-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#7a57c7] text-lg font-bold text-white">
+            Y
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-700">{item.timeLabel}</p>
+            <p className="text-xs text-gray-400">Previous AI score</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 rounded-full border border-[#7be4ec] px-4 py-2 text-[#4fcad3]">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#7be4ec] bg-white text-sm font-bold">
+              S
+            </span>
+            <span className="text-lg font-bold">{item.speaking}/90</span>
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-[#7be4ec] px-4 py-2 text-[#4fcad3]">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#7be4ec] bg-white text-sm font-bold">
+              R
+            </span>
+            <span className="text-lg font-bold">{item.reading}/90</span>
+          </div>
+          <div className="inline-flex items-center rounded-full bg-[#f5a267] px-4 py-2 text-sm font-semibold text-white">
+            AI Score
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ResultModal({ isOpen, onClose, result }) {
   useEffect(() => {
     document.body.style.overflow = isOpen ? "hidden" : "";
@@ -183,35 +219,6 @@ function ResultModal({ isOpen, onClose, result }) {
               <div className="flex items-center justify-end">
                 <p className="text-xs text-gray-400 font-medium">{totalWords} words detected</p>
               </div>
-
-              {transcriptWords.length ? (
-                <div>
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <p className="text-sm font-bold text-gray-700 uppercase tracking-wide">Transcript Analysis</p>
-                    <div className="flex items-center gap-3 text-[11px] font-semibold">
-                      <span className="text-green-600">Good</span>
-                      <span className="text-amber-500">Average</span>
-                      <span className="text-red-500">Poor</span>
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-[#d7ece0] bg-[#fbfffc] p-4 text-[15px] leading-8">
-                    {transcriptWords.map((word) => {
-                      const textColor =
-                        word.level === "good"
-                          ? "text-green-600"
-                          : word.level === "average"
-                            ? "text-amber-500"
-                            : "text-red-500";
-
-                      return (
-                        <span key={`${word.index}-${word.text}`} className={`${textColor} font-medium`}>
-                          {word.text}{" "}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
 
               <div className="flex items-center justify-between gap-3 rounded-xl border border-[#f5c6c6] bg-[#fff5f5] px-4 py-3">
                 <p className="text-sm font-bold text-[#810000]">AI Score</p>
@@ -288,6 +295,35 @@ function ResultModal({ isOpen, onClose, result }) {
                 </div>
               </div>
 
+              {transcriptWords.length ? (
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <p className="text-sm font-bold text-gray-700 uppercase tracking-wide">Transcript Analysis</p>
+                    <div className="flex items-center gap-3 text-[11px] font-semibold">
+                      <span className="text-green-600">Good</span>
+                      <span className="text-amber-500">Average</span>
+                      <span className="text-red-500">Poor</span>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-[#d7ece0] bg-[#fbfffc] p-4 text-[15px] leading-8">
+                    {transcriptWords.map((word) => {
+                      const textColor =
+                        word.level === "good"
+                          ? "text-green-600"
+                          : word.level === "average"
+                            ? "text-amber-500"
+                            : "text-red-500";
+
+                      return (
+                        <span key={`${word.index}-${word.text}`} className={`${textColor} font-medium`}>
+                          {word.text}{" "}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="bg-[#fffbea] border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
                 <p className="font-bold mb-1">Tips to improve</p>
                 {contentIsZero ? (
@@ -349,6 +385,7 @@ export default function ReadAloudPage({ params }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [recordingDurationSeconds, setRecordingDurationSeconds] = useState(0);
+  const [previousScores, setPreviousScores] = useState([]);
 
   useEffect(() => {
     timeLeftRef.current = timeLeft;
@@ -375,6 +412,7 @@ export default function ReadAloudPage({ params }) {
         setQuestion(null);
       }
       setLoading(false);
+      setPreviousScores([]);
       reset();
     }
     load();
@@ -496,6 +534,25 @@ export default function ReadAloudPage({ params }) {
 
       const data = await res.json();
       setResult(data);
+      const assessment = getQuestionAssessment(data, "read_aloud");
+      const speakingScore = getAssessmentSkill(assessment, "speaking")?.score ?? 0;
+      const readingScore = getAssessmentSkill(assessment, "reading")?.score ?? 0;
+      const now = new Date();
+      const timeLabel = `${String(now.getHours()).padStart(2, "0")}:${String(
+        now.getMinutes()
+      ).padStart(2, "0")}  ${String(now.getDate()).padStart(2, "0")}/${String(
+        now.getMonth() + 1
+      ).padStart(2, "0")}/${now.getFullYear()}`;
+
+      setPreviousScores((current) => [
+        {
+          id: `${Date.now()}`,
+          speaking: toDisplayOutOf90(speakingScore),
+          reading: toDisplayOutOf90(readingScore),
+          timeLabel,
+        },
+        ...current,
+      ].slice(0, 5));
       setShowModal(true);
     } catch (e) {
       setError(getFriendlySpeechErrorMessage(e.message));
@@ -546,8 +603,19 @@ export default function ReadAloudPage({ params }) {
 
       <div className="mb-4 flex items-center gap-2">
         <span className={`font-medium text-base ${isRecording ? "text-red-600" : "text-[#810000]"}`}>
-          {isRecording ? "Recording:" : "Beginning in"}
-          <span className="font-bold ml-1">{timeLeft} sec</span>
+          {isRecording ? (
+            <>
+              Recording:
+              <span className="font-bold ml-1">{timeLeft} sec</span>
+            </>
+          ) : audioBlob ? (
+            "Recording finished"
+          ) : (
+            <>
+              Beginning in
+              <span className="font-bold ml-1">{timeLeft} sec</span>
+            </>
+          )}
         </span>
         {isRecording && (
           <span className="flex items-center gap-1.5 text-red-600 text-sm font-medium">
@@ -634,6 +702,21 @@ export default function ReadAloudPage({ params }) {
           </button>
         </div>
       </div>
+
+      {previousScores.length ? (
+        <div className="mt-10 rounded-[28px] bg-[#edfdfd] p-5">
+          <div className="mb-5 text-center">
+            <h2 className="inline-block border-b-2 border-[#f5a267] px-4 pb-2 text-3xl font-semibold text-[#f5a267]">
+              My Score
+            </h2>
+          </div>
+          <div className="space-y-4">
+            {previousScores.map((item) => (
+              <PreviousScoreCard key={item.id} item={item} />
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

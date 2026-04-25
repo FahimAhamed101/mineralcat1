@@ -178,6 +178,53 @@ function formatScore(value) {
   return Number.isFinite(numericValue) ? numericValue.toFixed(0) : "-";
 }
 
+function ScoreGauge({ value, max = 90, label, color = "#810000", footer = "" }) {
+  const pct = Math.min(100, Math.max(0, (value / max) * 100));
+  const r = 28;
+  const circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <svg width="72" height="72" viewBox="0 0 72 72">
+        <circle cx="36" cy="36" r={r} fill="none" stroke="#f3e8e8" strokeWidth="7" />
+        <circle
+          cx="36"
+          cy="36"
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="7"
+          strokeDasharray={`${dash} ${circ}`}
+          strokeLinecap="round"
+          transform="rotate(-90 36 36)"
+          style={{ transition: "stroke-dasharray 0.8s cubic-bezier(.4,0,.2,1)" }}
+        />
+        <text x="36" y="40" textAnchor="middle" fontSize="13" fontWeight="700" fill={color}>
+          {Math.round(value)}
+        </text>
+      </svg>
+      <span className="text-xs font-semibold text-gray-600 text-center leading-tight">{label}</span>
+      {footer ? <span className="text-[11px] font-medium text-gray-400">{footer}</span> : null}
+    </div>
+  );
+}
+
+function WordPill({ count, label, color }) {
+  return (
+    <div className={`flex flex-col items-center px-4 py-3 rounded-xl border-2 ${color}`}>
+      <span className="text-2xl font-bold">{count}</span>
+      <span className="text-xs font-medium mt-0.5 opacity-80">{label}</span>
+    </div>
+  );
+}
+
+function toDisplayOutOf90FromTrait(value, max = TRAIT_SCALE_MAX) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return 0;
+  return Math.round((numericValue / max) * 90);
+}
+
 export default function RespondToSituationPage({ params }) {
   const { id } = use(params);
   const baseUrl = process.env.NEXT_PUBLIC_URL;
@@ -332,12 +379,16 @@ export default function RespondToSituationPage({ params }) {
   const goodWords = getAssessmentMeta(assessment, "goodWords", 0);
   const averageWords = getAssessmentMeta(assessment, "averageWords", 0);
   const badWords = getAssessmentMeta(assessment, "badWords", 0);
+  const progress = ((RECORD_SECONDS - timeLeft) / RECORD_SECONDS) * 100;
+  const elapsed = RECORD_SECONDS - timeLeft;
+  const fmt = (seconds) =>
+    `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
     <div className="w-full lg:w-full lg:max-w-[80%] mx-auto py-6 px-2 relative">
       {/* Title/Heading */}
       <div className="text-2xl font-semibold text-[#810000] border-b border-[#810000] pb-2 mb-6">
-        {question.heading}
+        Respond to a Situation
       </div>
       <p className="text-gray-700 mb-6">
         Listen to the situation prompt and record your response. You will have {RECORD_SECONDS}
@@ -365,39 +416,29 @@ export default function RespondToSituationPage({ params }) {
       </div>
 
       {/* Audio Recorder */}
-      <div className="border border-[#810000] rounded p-4 mb-6 bg-[#faf9f9] flex flex-col items-center">
-        <div className="flex items-center w-full gap-2 mt-2">
-          <span className="text-xs text-gray-600">
-            {new Date((RECORD_SECONDS - timeLeft) * 1000)
-              .toISOString()
-              .substr(14, 5)}
-          </span>
-          <div className="flex-1 h-2 rounded bg-gray-200 overflow-hidden relative">
+      <div className="border border-[#810000] rounded-lg bg-[#faf9f9] p-5 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs text-gray-500 w-10 text-right">{fmt(elapsed)}</span>
+          <div className="flex-1 h-2.5 rounded-full bg-gray-200 overflow-hidden">
             <div
-              className="h-2 rounded bg-[#810000] transition-all duration-200"
-              style={{
-                width: `${
-                  ((RECORD_SECONDS - timeLeft) / RECORD_SECONDS) * 100
-                }%`,
-              }}
+              className="h-2.5 rounded-full bg-[#810000] transition-all duration-500"
+              style={{ width: `${progress}%` }}
             />
           </div>
-          <span className="text-xs text-gray-600">
-            {new Date(RECORD_SECONDS * 1000).toISOString().substr(14, 5)}
-          </span>
+          <span className="text-xs text-gray-500 w-10">{fmt(RECORD_SECONDS)}</span>
         </div>
-        <div className="mt-2 text-center w-full text-gray-500 font-medium">
+
+        <p className="text-center text-sm font-medium text-gray-500 mb-5">
           {isRecording
             ? "Recording... Speak now"
             : audioBlob
-            ? "Recording complete"
-            : "Click Start to record"}
-        </div>
+              ? "Recording complete"
+              : "Press Start to begin recording"}
+        </p>
 
-        {/* Controls */}
-        <div className="flex gap-3 mt-4 flex-wrap">
+        <div className="flex items-center justify-center gap-3 flex-wrap">
           <button
-            className="flex items-center gap-1 px-4 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 font-medium text-sm"
+            className="px-5 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 font-medium text-sm disabled:opacity-40 transition"
             onClick={() => {
               setAudioBlob(null);
               setTimeLeft(RECORD_SECONDS);
@@ -408,232 +449,141 @@ export default function RespondToSituationPage({ params }) {
             Restart
           </button>
           <button
-            className="flex items-center gap-1 px-4 py-1 rounded bg-[#810000] text-white font-medium text-sm hover:bg-[#5d0000] disabled:bg-gray-300 disabled:text-gray-400"
-            onClick={handleSubmit}
-            disabled={!audioBlob || submitLoading}
-          >
-            <span>{submitLoading ? "Submitting..." : "Submit"}</span>
-          </button>
-          <button
-            className="flex items-center gap-1 px-4 py-1 rounded bg-[#810000] text-white font-medium text-sm hover:bg-[#5d0000] disabled:bg-gray-300 disabled:text-gray-400"
+            className="px-6 py-2 rounded-lg bg-[#810000] text-white font-semibold text-sm hover:bg-[#6a0000] disabled:opacity-40 transition"
             onClick={handleStartRecording}
             disabled={isRecording || timeLeft === 0 || audioPlaying}
           >
-            <span>Start</span>
+            Start
           </button>
           <button
-            className="flex items-center gap-1 px-4 py-1 rounded bg-gray-500 text-white font-medium text-sm hover:bg-gray-700 disabled:bg-gray-300 disabled:text-gray-400"
+            className="px-6 py-2 rounded-lg bg-gray-500 text-white font-semibold text-sm hover:bg-gray-600 disabled:opacity-40 transition"
             onClick={stopRecording}
             disabled={!isRecording}
           >
-            <span>Stop</span>
+            Stop
           </button>
-        </div>
-      </div>
-
-      <div className="mb-6 rounded-2xl border border-[#ead9d9] bg-white p-5 shadow-sm">
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold text-[#810000]">Scoring Guide</h2>
-          <p className="mt-2 text-sm leading-6 text-gray-700">
-            The Respond to a Situation task is scored on three traits: Appropriacy,
-            Pronunciation, and Fluency. Each trait is scored from 0 to {TRAIT_SCALE_MAX}.
-          </p>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-3">
-          {Object.entries(TRAIT_RUBRICS).map(([traitKey, trait]) => (
-            <div
-              key={traitKey}
-              className="rounded-2xl border border-[#efe5e5] bg-[#fffafa] p-4"
-            >
-              <h3 className="text-base font-semibold text-[#5d0000]">{trait.title}</h3>
-              <div className="mt-4 space-y-3">
-                {trait.levels.map((level) => (
-                  <div
-                    key={`${traitKey}-${level.score}`}
-                    className="rounded-xl border border-[#f2ebeb] bg-white px-3 py-3"
-                  >
-                    <p className="text-sm font-semibold text-[#2b2b2b]">
-                      {level.label}
-                    </p>
-                    <p className="mt-1 text-xs font-medium uppercase tracking-[0.08em] text-[#810000]">
-                      {level.summary}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-gray-600">
-                      {level.description}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+          <button
+            className="px-7 py-2 rounded-lg bg-[#810000] text-white font-bold text-sm hover:bg-[#6a0000] disabled:opacity-40 transition"
+            onClick={handleSubmit}
+            disabled={!audioBlob || submitLoading}
+          >
+            {submitLoading ? "Submitting..." : "Submit"}
+          </button>
         </div>
       </div>
 
       {/* Result Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-4xl max-h-[85vh] overflow-y-auto mx-4 p-6 animate-fadeIn">
-            <h2 className="text-2xl font-bold text-[#810000] mb-4 text-center">
-              Test Results
-            </h2>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden" style={{ maxHeight: "90vh", overflowY: "auto" }}>
+            <div className="bg-gradient-to-r from-[#7D0000] to-[#c0392b] px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-white text-xl font-bold">Respond to a Situation - AI Score</h2>
+                <p className="text-white/75 text-sm mt-0.5">Styled to match Read Aloud</p>
+              </div>
+              <button
+                className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white font-bold transition"
+                onClick={() => setShowModal(false)}
+              >
+                x
+              </button>
+            </div>
 
             {result?.success ? (
-              <div className="space-y-4">
-                <div className="rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-900">
-                  This task is scored on three traits: Appropriacy, Pronunciation, and Fluency.
-                  Each trait is shown on a {traitScaleMax || 5}-point scale.
-                </div>
-
-                {/* Scores */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-700">
-                      Appropriacy
-                    </p>
-                    <p className="text-base">
-                      {formatScore(appropriacyScore)} / {traitScaleMax || TRAIT_SCALE_MAX}
-                    </p>
-                    <p className="mt-1 text-xs text-[#810000]">
-                      {getTraitLevel("appropriacy", appropriacyScore)?.summary || "Not available"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-700">
-                      Pronunciation
-                    </p>
-                    <p className="text-base">
-                      {formatScore(pronunciationScore)} / {traitScaleMax || TRAIT_SCALE_MAX}
-                    </p>
-                    <p className="mt-1 text-xs text-[#810000]">
-                      {getTraitLevel("pronunciation", pronunciationScore)?.summary || "Not available"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-700">
-                      Fluency
-                    </p>
-                    <p className="text-base">
-                      {formatScore(fluencyScore)} / {traitScaleMax || TRAIT_SCALE_MAX}
-                    </p>
-                    <p className="mt-1 text-xs text-[#810000]">
-                      {getTraitLevel("fluency", fluencyScore)?.summary || "Not available"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-700">
-                      Total Trait Score
-                    </p>
-                    <p className="text-base">
-                      {formatScore(totalTraitScore)} / {(
-                        (traitScaleMax || TRAIT_SCALE_MAX) * 3
-                      ).toFixed(0)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-700">
-                      Practice Score
-                    </p>
-                    <p className="text-base">{formatScore(taskScore)} / 100</p>
+              <div className="p-6 space-y-6">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-[#f5c6c6] bg-[#fff5f5] px-4 py-3">
+                  <p className="text-sm font-bold text-[#810000]">AI Score</p>
+                  <div className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${
+                    taskScore >= 70
+                      ? "bg-green-100 text-green-700"
+                      : taskScore >= 45
+                        ? "bg-yellow-100 text-yellow-700"
+                        : "bg-red-100 text-red-700"
+                  }`}>
+                    {taskScore >= 70 ? "Excellent" : taskScore >= 45 ? "Good" : "Needs Practice"}
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                  {[
-                    { key: "appropriacy", value: appropriacyScore },
-                    { key: "pronunciation", value: pronunciationScore },
-                    { key: "fluency", value: fluencyScore },
-                  ].map(({ key, value }) => {
-                    const trait = TRAIT_RUBRICS[key];
-                    const level = getTraitLevel(key, value);
+                <div>
+                  <p className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">Communicative Skills</p>
+                  <div className="grid grid-cols-1 gap-4 bg-gray-50 rounded-xl p-4">
+                    <div className="flex flex-col items-center gap-1 bg-white rounded-lg p-3 shadow-sm">
+                      <ScoreGauge
+                        value={toDisplayOutOf90FromTrait((appropriacyScore + pronunciationScore + fluencyScore) / 3, traitScaleMax || TRAIT_SCALE_MAX)}
+                        label="Speaking"
+                        color="#810000"
+                        footer="Out of 90"
+                      />
+                    </div>
+                  </div>
+                </div>
 
-                    return (
-                      <div
-                        key={key}
-                        className="rounded-2xl border border-[#efe5e5] bg-[#fffafa] p-4"
-                      >
-                        <p className="text-sm font-semibold text-[#5d0000]">{trait.title}</p>
-                        <p className="mt-2 text-sm font-medium text-gray-800">
-                          {level?.label || "No score"}
-                        </p>
-                        <p className="mt-1 text-xs font-medium uppercase tracking-[0.08em] text-[#810000]">
-                          {level?.summary || "Not available"}
-                        </p>
-                        <p className="mt-3 text-sm leading-6 text-gray-600">
-                          {level?.description || "Trait guidance is not available for this score."}
-                        </p>
-                      </div>
-                    );
-                  })}
+                <div>
+                  <p className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">Enabling Skills</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-blue-50 rounded-xl p-3 text-center">
+                      <p className="text-xl font-black text-blue-700">
+                        {toDisplayOutOf90FromTrait(appropriacyScore, traitScaleMax || TRAIT_SCALE_MAX)}
+                        <span className="text-sm font-medium">/90</span>
+                      </p>
+                      <p className="text-xs font-semibold text-blue-600 mt-0.5">Appropriacy</p>
+                    </div>
+                    <div className="bg-purple-50 rounded-xl p-3 text-center">
+                      <p className="text-xl font-black text-purple-700">
+                        {toDisplayOutOf90FromTrait(fluencyScore, traitScaleMax || TRAIT_SCALE_MAX)}
+                        <span className="text-sm font-medium">/90</span>
+                      </p>
+                      <p className="text-xs font-semibold text-purple-600 mt-0.5">Fluency</p>
+                    </div>
+                    <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                      <p className="text-xl font-black text-emerald-700">
+                        {toDisplayOutOf90FromTrait(pronunciationScore, traitScaleMax || TRAIT_SCALE_MAX)}
+                        <span className="text-sm font-medium">/90</span>
+                      </p>
+                      <p className="text-xs font-semibold text-emerald-600 mt-0.5">Pronunciation</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">Word Quality Analysis</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <WordPill count={goodWords} label="Good" color="border-green-300 bg-green-50 text-green-700" />
+                    <WordPill count={averageWords} label="Average" color="border-yellow-300 bg-yellow-50 text-yellow-700" />
+                    <WordPill count={badWords} label="Poor" color="border-red-300 bg-red-50 text-red-700" />
+                  </div>
                 </div>
 
                 {predictedText ? (
-                  <div className="mt-4">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2">
-                      Transcript
-                    </h3>
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 whitespace-pre-line">
-                      {predictedText}
-                    </div>
+                  <div className="rounded-xl border border-[#d7ece0] bg-[#fbfffc] p-4">
+                    <p className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">Transcript</p>
+                    <p className="text-[15px] leading-7 text-gray-800 whitespace-pre-line">{predictedText}</p>
                   </div>
                 ) : null}
 
-                {/* Word Analysis */}
-                <div className="mt-4">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">
-                    Word Analysis
-                  </h3>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-700">
-                        Good Words
-                      </p>
-                      <p className="text-base">{goodWords}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-700">
-                        Average Words
-                      </p>
-                      <p className="text-base">{averageWords}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-700">
-                        Bad Words
-                      </p>
-                      <p className="text-base">{badWords}</p>
-                    </div>
-                  </div>
+                <div className="bg-[#fffbea] border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
+                  <p className="font-bold mb-1">Score formula</p>
+                  <p>Speaking uses the average of Appropriacy, Pronunciation, and Fluency.</p>
+                  <p className="mt-2">Total trait score: {formatScore(totalTraitScore)} / {((traitScaleMax || TRAIT_SCALE_MAX) * 3).toFixed(0)}</p>
                 </div>
               </div>
             ) : (
-              <p className="text-red-600 text-center mt-4">
-                Error loading results. Please try again.
-              </p>
+              <div className="p-6 text-center">
+                <p className="text-red-600">Error loading results. Please try again.</p>
+              </div>
             )}
 
-            {/* Close button */}
-            <div className="mt-6 text-center">
+            <div className="p-6 pt-0">
               <button
-                className="px-6 py-2 bg-[#810000] text-white rounded-full hover:bg-[#5d0000] transition-all"
+                className="w-full py-3 bg-[#810000] hover:bg-[#6a0000] text-white rounded-xl font-semibold transition"
                 onClick={() => setShowModal(false)}
               >
-                Close
+                Close & Continue
               </button>
             </div>
           </div>
         </div>
       )}
-
-      <style jsx>{`
-        .dropdown-scroll::-webkit-scrollbar {
-          width: 4px;
-          background: #eee;
-        }
-        .dropdown-scroll::-webkit-scrollbar-thumb {
-          background: #dedede;
-          border-radius: 2px;
-        }
-      `}</style>
     </div>
   );
 }

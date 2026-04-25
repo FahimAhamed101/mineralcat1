@@ -153,18 +153,21 @@ function buildLegacyAssessment(serverResponse = {}, subtype = "") {
       const pronunciationRaw = toNumber(data.pronunciation, toNumber(result.Pronunciation, 0)) || 0;
 
       return buildAssessment({
-        score: (average([speakingRaw, listeningRaw]) ?? 0) * 100,
-        maxScore: 100,
+        score: average([speakingRaw, listeningRaw]) ?? 0,
+        maxScore: 1,
         skills: [
-          createMetric("speaking", "Speaking", speakingRaw * 100, 100, { rawScore: speakingRaw }),
-          createMetric("listening", "Listening", listeningRaw * 100, 100, { rawScore: listeningRaw }),
+          createMetric("speaking", "Speaking", speakingRaw, 1, { rawScore: speakingRaw }),
+          createMetric("listening", "Listening", listeningRaw, 1, { rawScore: listeningRaw }),
         ],
         traits: [
-          createMetric("fluency", "Fluency", fluencyRaw * 100, 100, { rawScore: fluencyRaw }),
-          createMetric("pronunciation", "Pronunciation", pronunciationRaw * 100, 100, { rawScore: pronunciationRaw }),
+          createMetric("fluency", "Fluency", fluencyRaw, 1, { rawScore: fluencyRaw }),
+          createMetric("pronunciation", "Pronunciation", pronunciationRaw, 1, { rawScore: pronunciationRaw }),
         ],
         meta: {
           enablingSkills: data.enablingSkills ?? result.EnablingSkills ?? "NO",
+          predictedText: data.predictedText || "",
+          correctText: data.correctText || "",
+          matchedExpectedAnswer: Boolean(data.matchedExpectedAnswer),
         },
       });
     }
