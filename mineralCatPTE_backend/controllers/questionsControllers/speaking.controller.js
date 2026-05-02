@@ -22,7 +22,13 @@ const {
     buildAnswerShortQuestionAssessment,
     buildRepeatSentenceAssessment,
 } = require("../../common/questionAssessment");
-const { speakingReadAloudResult, speakingevaluateRepeatSentenceResult, speakingrespondToASituationResult } = require("../mockTestControllers/questionResultHelper/fullMockTest.result.controller");
+const { scoreOpenEndedSpeech } = require("../../services/speechace.service");
+const {
+    mapOpenEndedSpeechResponse,
+    speakingReadAloudResult,
+    speakingevaluateRepeatSentenceResult,
+    speakingrespondToASituationResult,
+} = require("../mockTestControllers/questionResultHelper/fullMockTest.result.controller");
 
 
 const openai = new OpenAI({
@@ -47,37 +53,6 @@ function clampScore(value, min, max) {
     return Math.min(Math.max(value, min), max);
 }
 
-function extractJsonObject(content) {
-    if (typeof content !== 'string') {
-        throw new ExpressError(500, 'Invalid model response format');
-    }
-
-    const trimmedContent = content.trim();
-    const fencedMatch = trimmedContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    const candidate = fencedMatch ? fencedMatch[1].trim() : trimmedContent;
-    const objectStart = candidate.indexOf('{');
-    const objectEnd = candidate.lastIndexOf('}');
-
-    if (objectStart === -1 || objectEnd === -1 || objectEnd < objectStart) {
-        throw new ExpressError(500, 'Model response did not contain a JSON object');
-    }
-
-    return JSON.parse(candidate.slice(objectStart, objectEnd + 1));
-}
-
-function normalizeUnitScore(value) {
-    const numericValue = Number(value);
-    if (!Number.isFinite(numericValue)) {
-        return 0;
-    }
-
-    return clampScore(numericValue, 0, 1);
-}
-
-function normalizeYesNo(value) {
-    return String(value || '').trim().toUpperCase() === 'YES' ? 'YES' : 'NO';
-}
-
 function normalizeComparableText(value) {
     return String(value || "")
         .toLowerCase()
@@ -98,7 +73,60 @@ function getAcceptedAnswerVariants(correctText) {
     return variants.length ? variants : [raw];
 }
 
-function buildDeterministicAnswerShortQuestionResult({ userText = "", correctText = "" } = {}) {
+function toBinarySpeechAceTraitScore(value, minimumPassingScore = 3) {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+        return 0;
+    }
+
+    return clampScore(Math.round(numericValue), 0, 5) >= minimumPassingScore ? 1 : 0;
+}
+
+function buildAnswerShortQuestionResponse({
+    userText = "",
+    correctText = "",
+    speakingScore = 0,
+    listeningScore = 0,
+    enablingSkills = "NO",
+    fluency = 0,
+    pronunciation = 0,
+    matchedExpectedAnswer = false,
+} = {}) {
+    const normalizedSpeakingScore = clampScore(Number(speakingScore) || 0, 0, 1);
+    const normalizedListeningScore = clampScore(Number(listeningScore) || 0, 0, 1);
+    const normalizedFluency = clampScore(Number(fluency) || 0, 0, 1);
+    const normalizedPronunciation = clampScore(Number(pronunciation) || 0, 0, 1);
+    const normalizedEnablingSkills = String(enablingSkills || '').trim().toUpperCase() === 'YES'
+        ? 'YES'
+        : 'NO';
+
+    return {
+        result: {
+            Speaking: normalizedSpeakingScore,
+            Listening: normalizedListeningScore,
+            EnablingSkills: normalizedEnablingSkills,
+            Fluency: normalizedFluency,
+            Pronunciation: normalizedPronunciation,
+        },
+        data: {
+            speakingScore: normalizedSpeakingScore,
+            listeningScore: normalizedListeningScore,
+            fluency: normalizedFluency,
+            pronunciation: normalizedPronunciation,
+            enablingSkills: normalizedEnablingSkills,
+            predictedText: userText,
+            correctText,
+            matchedExpectedAnswer: Boolean(matchedExpectedAnswer),
+        },
+    };
+}
+
+function buildDeterministicAnswerShortQuestionResult({
+    userText = "",
+    correctText = "",
+    fluency = 0,
+    pronunciation = 0,
+} = {}) {
     const normalizedUserText = normalizeComparableText(userText);
     const acceptedAnswers = getAcceptedAnswerVariants(correctText);
     const normalizedAcceptedAnswers = acceptedAnswers
@@ -109,51 +137,72 @@ function buildDeterministicAnswerShortQuestionResult({ userText = "", correctTex
         Boolean(normalizedUserText) &&
         normalizedAcceptedAnswers.some((answer) => answer === normalizedUserText);
 
-    const score = isCorrect ? 1 : 0;
-
-    return {
-        result: {
-            Speaking: score,
-            Listening: score,
-            EnablingSkills: isCorrect ? "YES" : "NO",
-            Fluency: score,
-            Pronunciation: score,
-        },
-        data: {
-            speakingScore: score,
-            listeningScore: score,
-            fluency: score,
-            pronunciation: score,
-            enablingSkills: isCorrect ? "YES" : "NO",
-            predictedText: userText,
-            correctText,
-            matchedExpectedAnswer: isCorrect,
-        },
-    };
+    return buildAnswerShortQuestionResponse({
+        userText,
+        correctText,
+        speakingScore: isCorrect ? 1 : 0,
+        listeningScore: isCorrect ? 1 : 0,
+        enablingSkills: isCorrect ? "YES" : "NO",
+        fluency,
+        pronunciation,
+        matchedExpectedAnswer: isCorrect,
+    });
 }
 
-function normalizeAnswerShortQuestionScores(rawResult = {}) {
-    const normalizedResult = {
-        Speaking: normalizeUnitScore(rawResult.Speaking ?? rawResult.speaking),
-        Listening: normalizeUnitScore(rawResult.Listening ?? rawResult.listening),
-        EnablingSkills: normalizeYesNo(rawResult.EnablingSkills ?? rawResult.enablingSkills),
-        Fluency: normalizeUnitScore(rawResult.Fluency ?? rawResult.fluency),
-        Pronunciation: normalizeUnitScore(rawResult.Pronunciation ?? rawResult.pronunciation),
-    };
+function buildAnswerShortQuestionRelevanceContext(question = {}) {
+    const promptText = String(question.audioConvertedText || question.prompt || question.heading || "").trim();
+    const correctText = String(question.correctText || "").trim();
 
-    return {
-        result: normalizedResult,
-        data: {
-            speakingScore: normalizedResult.Speaking,
-            listeningScore: normalizedResult.Listening,
-            fluency: normalizedResult.Fluency,
-            pronunciation: normalizedResult.Pronunciation,
-            enablingSkills: normalizedResult.EnablingSkills,
-            predictedText: rawResult.predictedText || "",
-            correctText: rawResult.correctText || "",
-            matchedExpectedAnswer: Boolean(rawResult.matchedExpectedAnswer),
-        },
-    };
+    if (promptText && correctText) {
+        return `${promptText}\nAccepted answer(s): ${correctText}`;
+    }
+
+    return promptText || correctText;
+}
+
+function isNoSpeechDetectedError(error) {
+    const message = String(error?.message || '').toLowerCase();
+
+    return (
+        message.includes('error_no_speech') ||
+        message.includes('no speech was detected') ||
+        message.includes('no speech is detected')
+    );
+}
+
+function buildSpeechAceAnswerShortQuestionResult({
+    userText = "",
+    correctText = "",
+    speechMetrics = {},
+} = {}) {
+    const normalizedUserText = String(userText || "").trim();
+    const normalizedCorrectText = String(correctText || "").trim();
+    const fluency = toBinarySpeechAceTraitScore(speechMetrics.fluency);
+    const pronunciation = toBinarySpeechAceTraitScore(speechMetrics.pronunciation);
+
+    if (normalizedCorrectText) {
+        return buildDeterministicAnswerShortQuestionResult({
+            userText: normalizedUserText,
+            correctText: normalizedCorrectText,
+            fluency,
+            pronunciation,
+        });
+    }
+
+    const relevanceClass = String(speechMetrics.relevanceClass || "").trim().toUpperCase();
+    const isRelevant = relevanceClass === "TRUE" || Number(speechMetrics.appropriacy) >= 3;
+    const score = isRelevant ? 1 : 0;
+
+    return buildAnswerShortQuestionResponse({
+        userText: normalizedUserText,
+        correctText: normalizedCorrectText,
+        speakingScore: score,
+        listeningScore: score,
+        enablingSkills: isRelevant ? "YES" : "NO",
+        fluency,
+        pronunciation,
+        matchedExpectedAnswer: false,
+    });
 }
 
 async function uploadToCloudinary(file, folderName) {
@@ -583,7 +632,6 @@ module.exports.getAllAnswerShortQuestion = asyncWrapper(async (req, res) => {
 
 module.exports.answerShortQuestionResult = asyncWrapper(async (req, res) => {
     const { questionId, accent = 'us' } = req.body;
-    let mainAudioFile = null;
     let userFilePath = req.file?.path;
 
     try {
@@ -592,46 +640,64 @@ module.exports.answerShortQuestionResult = asyncWrapper(async (req, res) => {
 
         const question = await questionsModel.findById(questionId);
         if (!question) throw new ExpressError(404, "Question Not Found!");
+        if (question.subtype !== 'answer_short_question') {
+            throw new ExpressError(401, "this is not valid questionType for this route!");
+        }
 
-        const mainAudioText = question.audioConvertedText;
-         const transcription = await openai.audio.transcriptions.create({
-            file: fs.createReadStream(req.file.path),
-            model: 'whisper-1',
-            response_format: 'text',
-        });
+        const correctText = String(question.correctText || "").trim();
+        let normalizedResponse;
 
+        try {
+            const speechResponse = await scoreOpenEndedSpeech({
+                audioFilePath: userFilePath,
+                relevanceContext: buildAnswerShortQuestionRelevanceContext(question),
+                accent,
+            });
+            const speechMetrics = mapOpenEndedSpeechResponse(speechResponse);
 
-        const userText = transcription;
+            normalizedResponse = buildSpeechAceAnswerShortQuestionResult({
+                userText: speechMetrics.predictedText || "",
+                correctText,
+                speechMetrics,
+            });
+        } catch (error) {
+            if (!isNoSpeechDetectedError(error)) {
+                throw error;
+            }
+
+            normalizedResponse = buildAnswerShortQuestionResponse({
+                userText: "",
+                correctText,
+                speakingScore: 0,
+                listeningScore: 0,
+                enablingSkills: "NO",
+                fluency: 0,
+                pronunciation: 0,
+                matchedExpectedAnswer: false,
+            });
+        }
 
         await safeDeleteFile(userFilePath);
         userFilePath = null;
 
-        const correctText = String(question.correctText || "").trim();
-        const deterministicResult = correctText
-            ? buildDeterministicAnswerShortQuestionResult({ userText, correctText })
-            : null;
+        await practicedModel.findOneAndUpdate(
+            {
+                user: req.user._id,
+                questionType: question.type,
+                subtype: question.subtype
+            },
+            {
+                $addToSet: { practicedQuestions: question._id }
+            },
+            { upsert: true, new: true }
+        );
 
-        if (deterministicResult) {
-            const normalizedResponse = deterministicResult;
-            await practicedModel.findOneAndUpdate(
-                {
-                    user: req.user._id,
-                    questionType: question.type,
-                    subtype: question.subtype
-                },
-                {
-                    $addToSet: { practicedQuestions: question._id }
-                },
-                { upsert: true, new: true }
-            );
-
-            return res.status(200).json({
-                success: true,
-                result: normalizedResponse.result,
-                data: normalizedResponse.data,
-                assessment: buildAnswerShortQuestionAssessment(normalizedResponse),
-            });
-        }
+        return res.status(200).json({
+            success: true,
+            result: normalizedResponse.result,
+            data: normalizedResponse.data,
+            assessment: buildAnswerShortQuestionAssessment(normalizedResponse),
+        });
 
         const prompt = `
 You are an expert language assessor, and your task is to evaluate the speaking and listening abilities of a user based on a question prompt and their response. Below are the inputs:
@@ -682,7 +748,7 @@ Please provide the following result in this format and Format your response as J
             max_tokens: 500
         });
         const parsedResult = extractJsonObject(response.choices[0].message.content);
-        const normalizedResponse = normalizeAnswerShortQuestionScores(parsedResult);
+        normalizedResponse = normalizeAnswerShortQuestionScores(parsedResult);
         await practicedModel.findOneAndUpdate(
             {
                 user: req.user._id,
@@ -703,9 +769,6 @@ Please provide the following result in this format and Format your response as J
         });
 
     } catch (error) {
-        if (mainAudioFile) {
-            await safeDeleteFile(mainAudioFile);
-        }
         if (userFilePath) {
             await safeDeleteFile(userFilePath);
         }
