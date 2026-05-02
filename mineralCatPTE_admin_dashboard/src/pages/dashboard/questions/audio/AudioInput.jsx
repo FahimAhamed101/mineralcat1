@@ -1,82 +1,170 @@
-import React, { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { BsUpload } from "react-icons/bs";
 import { MdDelete } from "react-icons/md";
+import { toast } from "react-toastify";
+
+const ACCEPTED_AUDIO_TYPES = [
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/webm",
+  "audio/ogg",
+  "audio/mp4",
+  "audio/x-m4a",
+  "video/webm",
+];
+
+const ACCEPTED_AUDIO_EXTENSIONS = [".mp3", ".wav", ".webm", ".ogg", ".m4a"];
+const ACCEPT_ATTRIBUTE = [
+  ...ACCEPTED_AUDIO_EXTENSIONS,
+  ...ACCEPTED_AUDIO_TYPES,
+].join(",");
+
+function getFileExtension(fileName = "") {
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : "";
+}
+
+function getAudioName(audio) {
+  if (audio instanceof File) return audio.name;
+  if (typeof audio === "string" && audio) {
+    try {
+      return decodeURIComponent(audio.split("/").pop()?.split("?")[0] || "Audio file");
+    } catch {
+      return audio.split("/").pop()?.split("?")[0] || "Audio file";
+    }
+  }
+  return "";
+}
+
+function isAcceptedAudioFile(file) {
+  if (!file) return false;
+
+  const extension = getFileExtension(file.name);
+  const type = String(file.type || "").toLowerCase();
+
+  return (
+    ACCEPTED_AUDIO_EXTENSIONS.includes(extension) ||
+    ACCEPTED_AUDIO_TYPES.includes(type) ||
+    type.startsWith("audio/")
+  );
+}
 
 const AudioInput = ({ audio, setAudio }) => {
-  const [audioUrl, setAudioUrl] = useState(""); // Audio file URL for preview
+  const inputId = useId();
+  const fileInputRef = useRef(null);
+  const [audioUrl, setAudioUrl] = useState("");
+  const hasAudio = Boolean(audio);
+  const audioName = getAudioName(audio);
 
-  const handleUploadAudio = () => {
-    document.getElementById("audio_input").click();
+  useEffect(() => {
+    if (!audio) {
+      setAudioUrl("");
+      return undefined;
+    }
+
+    if (typeof audio === "string") {
+      setAudioUrl(audio);
+      return undefined;
+    }
+
+    const nextAudioUrl = URL.createObjectURL(audio);
+    setAudioUrl(nextAudioUrl);
+
+    return () => URL.revokeObjectURL(nextAudioUrl);
+  }, [audio]);
+
+  const openFilePicker = () => {
+    fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e) => {
-    e.preventDefault();
-    const file = e.target.files[0];
-    
-    if (file) {
-      // Check file type and create object URL
-      if (file.type.startsWith("audio/")) {
-        const audioURL = URL.createObjectURL(file);
-        setAudio(file);  // Set the entire file object
-        setAudioUrl(audioURL); // Set the URL for audio preview
-      } else {
-        alert("Please upload a valid audio file");
-      }
+  const resetFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
-  const handleUploadFile = async () => {
-    // Assuming you will handle file upload logic here (server-side)
-    console.log("Audio file to upload: ", audio);
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      resetFileInput();
+      return;
+    }
+
+    if (!isAcceptedAudioFile(file)) {
+      toast.error("Please upload an MP3, WAV, WebM, OGG, or M4A audio file.");
+      resetFileInput();
+      return;
+    }
+
+    setAudio(file);
+    resetFileInput();
+  };
+
+  const handleRemoveAudio = () => {
+    setAudio("");
+    setAudioUrl("");
+    resetFileInput();
   };
 
   return (
-    <div className="p-8 mb-4 flex items-center flex-col gap-5 justify-center">
-      {audio === "" ? (
-        <div className="text-center w-full md:w-[90%]">
-          <input
-            type="file"
-            name="audio"
-            id="audio_input"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <h1 className="text-[1.5rem] dark:text-[#abc2d3] text-text font-[600]">
-            Upload your audio files
-          </h1>
-          <p className="text-[#777777] dark:text-[#abc2d3]/80 font-[400] text-[1rem]">
-            MP3, WAV, AAC, FLAC, M4A, OGG, and WMA formats are supported.
+    <div className="w-full max-w-6xl mx-auto px-0 sm:px-4 py-8">
+      <input
+        ref={fileInputRef}
+        type="file"
+        name="audio"
+        id={inputId}
+        className="hidden"
+        accept={ACCEPT_ATTRIBUTE}
+        onChange={handleFileChange}
+      />
+
+      {!hasAudio ? (
+        <div className="text-center w-full">
+          <h2 className="text-xl font-semibold text-gray-900">Upload audio</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            MP3, WAV, WebM, OGG, and M4A files up to 25MB are supported.
           </p>
 
-          <div
-            className="mt-5 w-full md:w-[70%] mx-auto dark:border-slate-700 dark:bg-slate-900 flex items-center justify-center flex-col bg-white border-[2px] border-dashed border-[#3B9DF8] rounded-md py-10 cursor-pointer"
-            onClick={handleUploadAudio}
+          <button
+            type="button"
+            className="mt-5 w-full max-w-3xl mx-auto flex items-center justify-center flex-col bg-white border-2 border-dashed border-[#3B9DF8] rounded-md py-10 cursor-pointer hover:bg-blue-50 transition-colors"
+            onClick={openFilePicker}
           >
-            <BsUpload className="text-[4rem] text-[#424242] dark:text-[#abc2d3]/70" />
-          </div>
+            <BsUpload className="text-5xl text-[#424242]" />
+            <span className="mt-3 text-sm font-medium text-gray-700">
+              Choose audio file
+            </span>
+          </button>
         </div>
       ) : (
-        <div className="relative w-full md:w-[80%]">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-[1.2rem]">{audio.name}</h2>
-            <MdDelete
-              className="text-[2rem] text-white bg-red-500 p-2 rounded-full cursor-pointer hover:bg-red-700 transition duration-300 ease-in-out"
-              onClick={() => {
-                setAudio(null);
-                setAudioUrl("");
-              }}
-            />
+        <div className="w-full max-w-5xl mx-auto">
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <h2 className="min-w-0 truncate text-lg font-medium text-gray-900">
+              {audioName}
+            </h2>
+            <button
+              type="button"
+              aria-label="Remove audio"
+              className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+              onClick={handleRemoveAudio}
+            >
+              <MdDelete className="text-xl" />
+            </button>
           </div>
 
-          {/* Audio Player for Preview */}
-          <audio controls className="w-full">
-            <source src={audioUrl} type={audio.type} />
+          <audio controls className="w-full" src={audioUrl}>
             Your browser does not support the audio element.
           </audio>
 
-          {/* Upload Button */}
-          <button onClick={handleUploadFile} className="mt-3 text-white bg-blue-500 px-4 py-2 rounded-md">
-            Upload Audio
+          <button
+            type="button"
+            onClick={openFilePicker}
+            className="mt-3 text-white bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded-md transition-colors"
+          >
+            Replace Audio
           </button>
         </div>
       )}

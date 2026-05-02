@@ -108,8 +108,8 @@ export default function Edit() {
         .catch((error) => {
           console.error("Error updating question:", error);
           toast.error(error?.message || "Error updating the question.");
-        });
-      setLoading(false);
+        })
+        .finally(() => setLoading(false));
       return;
     }
 
@@ -144,25 +144,24 @@ export default function Edit() {
           confirmButtonText: "OK",
         });
         // Optionally redirect or show success message
-        setLoading(false);
         // Redirect to the read-aloud page
         window.location.href = from; // Redirect to the read-aloud page
       })
       .catch((error) => {
         console.error("Error updating question:", error);
         toast.error(error?.message || "Error updating the question.");
-      });
-    setLoading(false);
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col w-full max-w-full overflow-x-hidden">
       {/* Header */}
       <button
         onClick={() => {
           navigate(from);
         }}
-        className="bg-red-700 text-white px-4 py-3 flex items-center"
+        className="w-full bg-red-700 text-white px-4 py-3 flex items-center"
       >
         <ChevronLeft className="w-5 h-5 mr-2" />
         <span className="text-lg font-medium">Edit</span>
@@ -211,7 +210,8 @@ export default function Edit() {
         <div className="flex justify-center">
           <button
             onClick={handleUpdate}
-            className="bg-red-700 hover:bg-red-800 text-white font-medium py-3 px-24 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2"
+            disabled={loading}
+            className="bg-red-700 hover:bg-red-800 disabled:bg-red-400 disabled:cursor-not-allowed text-white font-medium py-3 px-24 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2"
           >
             {loading ? "Uploading..." : "Update Question"}
           </button>
