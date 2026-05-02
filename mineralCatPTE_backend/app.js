@@ -37,7 +37,7 @@ const allowedOrigins = [
   "http://localhost:3002",
   "http://209.142.65.188:3000",
   "https://mineralcat1.vercel.app",
-  "209.142.65.188:3000",
+  "209.142.65.188:3000","https://mineralcat1-mjdh.vercel.app",
   "https://mineral-cat-pte-frontend-latest.vercel.app",
   "https://mineral-cat-pte-admin-dashboard.vercel.app",
 ];
