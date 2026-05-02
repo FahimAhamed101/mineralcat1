@@ -217,7 +217,7 @@ module.exports.addSummarizeSpokenText = asyncWrapper(async (req, res) => {
         resource_type: 'video',
         public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         folder: `listening_test/${folderName}`,
-        type: 'authenticated',
+        type: 'upload',
     })
 
     const transcription = await openai.audio.transcriptions.create({
@@ -270,7 +270,7 @@ module.exports.editSummarizeSpokenText = asyncWrapper(async (req, res) => {
             resource_type: 'video',
             public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             folder: `listening_test/${folderName}`,
-            type: 'authenticated',
+           type: 'upload',
         });
 
         // Get transcription from Whisper
@@ -416,7 +416,7 @@ module.exports.addMultipleChoicesAndMultipleAnswers = asyncWrapper(async (req, r
         resource_type: 'video',
         public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         folder: `listening_test/${folderName}`,
-        type: 'authenticated',
+        type: 'upload',
     })
 
     fs.unlinkSync(req.file.path);
@@ -460,7 +460,7 @@ module.exports.editMultipleChoicesAndMultipleAnswers = asyncWrapper(async (req, 
             resource_type: 'video',
             public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             folder: `listening_test/${folderName}`,
-            type: 'authenticated',
+           type: 'upload',
         })
 
         fs.unlinkSync(req.file.path);
@@ -565,7 +565,7 @@ module.exports.addListeningFillInTheBlanks = asyncWrapper(async (req, res) => {
         resource_type: 'video',
         public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         folder: `listening_test/${folderName}`,
-        type: 'authenticated',
+        type: 'upload',
     });
 
     fs.unlinkSync(req.file.path);
@@ -606,7 +606,7 @@ module.exports.editListeningFillInTheBlanks = asyncWrapper(async (req, res) => {
             resource_type: 'video',
             public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             folder: `listening_test/${folderName}`,
-            type: 'authenticated',
+            type: 'upload',
         })
 
         fs.unlinkSync(req.file.path);
@@ -721,7 +721,7 @@ module.exports.addMultipleChoiceSingleAnswers = asyncWrapper(async (req, res) =>
         resource_type: 'video',
         public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         folder: `listening_test/${folderName}`,
-        type: 'authenticated',
+        type: 'upload',
     })
 
     fs.unlinkSync(req.file.path);
@@ -769,7 +769,7 @@ module.exports.editMultipleChoiceSingleAnswers = asyncWrapper(async (req, res) =
             resource_type: 'video',
             public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             folder: `listening_test/${folderName}`,
-            type: 'authenticated',
+            type: 'upload',
         });
 
         fs.unlinkSync(req.file.path);
