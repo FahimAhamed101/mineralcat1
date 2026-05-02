@@ -447,6 +447,23 @@ function buildEmptyRepeatSentenceResponse() {
   };
 }
 
+function buildEmptyReadAloudResponse() {
+  return {
+    speakingScore: 0,
+    readingScore: 0,
+    content: 0,
+    fluency: 0,
+    pronunciation: 0,
+    transcript: '',
+    transcriptWords: [],
+    totalWords: 0,
+    goodWords: 0,
+    averageWords: 0,
+    badWords: 0,
+    noSpeechDetected: true,
+  };
+}
+
 function buildEmptyRespondToSituationResponse() {
   return {
     speakingScore: 0,
@@ -668,12 +685,22 @@ async function handleSpeechAssessment(req, res, expectedSubtype) {
       }
     } else {
       const expectedText = question.prompt;
-      const fullResponse = await scoreScriptedSpeech({
-        audioFilePath: userFilePath,
-        expectedText,
-        accent,
-      });
-      responseData = mapScriptedSpeechResponse(fullResponse, expectedText);
+      try {
+        const fullResponse = await scoreScriptedSpeech({
+          audioFilePath: userFilePath,
+          expectedText,
+          accent,
+        });
+        responseData = mapScriptedSpeechResponse(fullResponse, expectedText);
+      } catch (error) {
+        if (isNoSpeechDetectedError(error)) {
+          responseData = expectedSubtype === 'read_aloud'
+            ? buildEmptyReadAloudResponse()
+            : buildEmptyRepeatSentenceResponse();
+        } else {
+          throw error;
+        }
+      }
     }
 
     await safeDeleteFile(userFilePath);

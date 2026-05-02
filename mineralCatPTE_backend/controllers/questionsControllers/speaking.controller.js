@@ -15,7 +15,6 @@ const path = require('path');
 const fs = require('node:fs');
 const { asyncWrapper } = require("../../utils/AsyncWrapper");
 const fsPromises = require('fs').promises;
-const { OpenAI } = require('openai');
 const practicedModel = require("../../models/practiced.model");
 const { getQuestionByQuery } = require("../../common/getQuestionFunction");
 const {
@@ -31,9 +30,55 @@ const {
 } = require("../mockTestControllers/questionResultHelper/fullMockTest.result.controller");
 
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+function getSpeechAceTranscript(fullResponse) {
+    const speechScore = fullResponse?.speech_score || {};
+    const transcript = String(speechScore.transcript || '').trim();
+    if (transcript) return transcript;
+
+    const wordScoreList = Array.isArray(speechScore.word_score_list)
+        ? speechScore.word_score_list
+        : [];
+
+    return wordScoreList
+        .map((wordScore) => String(
+            wordScore?.word ??
+            wordScore?.text ??
+            wordScore?.token ??
+            wordScore?.display ??
+            ''
+        ).trim())
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+}
+
+async function transcribeAudioFile(audioFile) {
+    if (!audioFile?.path) {
+        throw new ExpressError(400, "Audio file is required for transcription");
+    }
+
+    try {
+        const speechResponse = await scoreOpenEndedSpeech({
+            audioFilePath: audioFile.path,
+        });
+        const transcript = getSpeechAceTranscript(speechResponse);
+
+        if (!transcript) {
+            throw new ExpressError(422, "SpeechAce did not return a transcript for this audio file");
+        }
+
+        return transcript;
+    } catch (error) {
+        if (error?.status === 422) {
+            throw error;
+        }
+
+        throw new ExpressError(
+            502,
+            `SpeechAce transcription failed: ${error?.message || "SpeechAce request failed"}`
+        );
+    }
+}
 // ============================================================
 // HELPER FUNCTIONS
 // ============================================================
@@ -47,6 +92,23 @@ async function safeDeleteFile(filePath) {
             console.error("Failed to delete temp file:", err);
         }
     }
+}
+
+function hasCloudinaryCredentials() {
+    return Boolean(
+        process.env.CLOUDINARY_CLOUD_NAME &&
+        process.env.CLOUDINARY_API_KEY &&
+        process.env.CLOUDINARY_API_SECRET
+    );
+}
+
+function buildLocalUploadUrl(file, req) {
+    if (!req) {
+        throw new ExpressError(500, "Request context is required for local audio uploads");
+    }
+
+    const fileName = path.basename(file.path);
+    return `${req.protocol}://${req.get('host')}/uploads/${fileName}`;
 }
 
 function clampScore(value, min, max) {
@@ -66,7 +128,7 @@ function getAcceptedAnswerVariants(correctText) {
     if (!raw) return [];
 
     const variants = raw
-        .split(/\r?\n|\|/)
+        .split(/\r?\n|\||;/)
         .map((item) => item.trim())
         .filter(Boolean);
 
@@ -149,17 +211,6 @@ function buildDeterministicAnswerShortQuestionResult({
     });
 }
 
-function buildAnswerShortQuestionRelevanceContext(question = {}) {
-    const promptText = String(question.audioConvertedText || question.prompt || question.heading || "").trim();
-    const correctText = String(question.correctText || "").trim();
-
-    if (promptText && correctText) {
-        return `${promptText}\nAccepted answer(s): ${correctText}`;
-    }
-
-    return promptText || correctText;
-}
-
 function isNoSpeechDetectedError(error) {
     const message = String(error?.message || '').toLowerCase();
 
@@ -180,46 +231,46 @@ function buildSpeechAceAnswerShortQuestionResult({
     const fluency = toBinarySpeechAceTraitScore(speechMetrics.fluency);
     const pronunciation = toBinarySpeechAceTraitScore(speechMetrics.pronunciation);
 
-    if (normalizedCorrectText) {
-        return buildDeterministicAnswerShortQuestionResult({
-            userText: normalizedUserText,
-            correctText: normalizedCorrectText,
-            fluency,
-            pronunciation,
-        });
-    }
-
-    const relevanceClass = String(speechMetrics.relevanceClass || "").trim().toUpperCase();
-    const isRelevant = relevanceClass === "TRUE" || Number(speechMetrics.appropriacy) >= 3;
-    const score = isRelevant ? 1 : 0;
-
-    return buildAnswerShortQuestionResponse({
+    return buildDeterministicAnswerShortQuestionResult({
         userText: normalizedUserText,
         correctText: normalizedCorrectText,
-        speakingScore: score,
-        listeningScore: score,
-        enablingSkills: isRelevant ? "YES" : "NO",
         fluency,
         pronunciation,
-        matchedExpectedAnswer: false,
     });
 }
 
-async function uploadToCloudinary(file, folderName) {
+async function uploadToCloudinary(file, folderName, req) {
     if (!file) throw new ExpressError(400, 'Please upload a file');
 
-    const result = await cloudinary.uploader.upload(file.path, {
-        resource_type: 'auto',
-        public_id: `${path.basename(file.originalname, path.extname(file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-        folder: `listening_test/${folderName}`,
-        type: 'authenticated',
-    });
+    if (!hasCloudinaryCredentials()) {
+        if (process.env.NODE_ENV === 'production') {
+            throw new ExpressError(500, 'Cloudinary is not configured for audio uploads');
+        }
+
+        return buildLocalUploadUrl(file, req);
+    }
+
+    let result;
+    try {
+        result = await cloudinary.uploader.upload(file.path, {
+            resource_type: 'video',
+            public_id: `${path.basename(file.originalname, path.extname(file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            folder: `listening_test/${folderName}`,
+            type: 'authenticated',
+        });
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'production') {
+            return buildLocalUploadUrl(file, req);
+        }
+
+        throw new ExpressError(502, `Audio upload failed: ${error.message}`);
+    }
 
     fs.unlinkSync(file.path);
     return result.secure_url;
 }
 
-async function addQuestion(validator, data, userId, audioFile = null, folderName = null, convertToText = false) {
+async function addQuestion(validator, data, userId, audioFile = null, folderName = null, convertToText = false, req = null) {
     const { error, value } = validator.validate(data);
     if (error) throw new ExpressError(400, error.details[0].message);
 
@@ -229,41 +280,38 @@ async function addQuestion(validator, data, userId, audioFile = null, folderName
     };
 
     if (audioFile && convertToText === true) {
-        const transcription = await openai.audio.transcriptions.create({
-            file: fs.createReadStream(audioFile.path),
-            model: 'whisper-1',
-            response_format: 'text',
-        });
-        const ConvertedText = transcription;
-        questionData.audioConvertedText = ConvertedText;
+        try {
+            questionData.audioConvertedText = await transcribeAudioFile(audioFile);
+        } catch (error) {
+            await safeDeleteFile(audioFile.path);
+            throw error;
+        }
     }
     if (audioFile && folderName) {
-        questionData.audioUrl = await uploadToCloudinary(audioFile, folderName);
+        questionData.audioUrl = await uploadToCloudinary(audioFile, folderName, req);
     }
 
     const newQuestion = await questionsModel.create(questionData);
     return newQuestion;
 }
 
-async function editQuestion(validator, questionId, data, userId, audioFile = null, folderName = null, convertToText = false) {
+async function editQuestion(validator, questionId, data, userId, audioFile = null, folderName = null, convertToText = false, req = null) {
     const { error, value } = validator.validate(data);
     if (error) throw new ExpressError(400, error.details[0].message);
 
     if (!questionId) throw new ExpressError(400, "Question ID is required");
 
     if (audioFile && folderName && convertToText) {
-        // Get transcription using Whisper
-        const transcription = await openai.audio.transcriptions.create({
-            file: fs.createReadStream(audioFile.path),
-            model: 'whisper-1',
-            response_format: 'text',
-        });
-
-        value.audioConvertedText = transcription;
+        try {
+            value.audioConvertedText = await transcribeAudioFile(audioFile);
+        } catch (error) {
+            await safeDeleteFile(audioFile.path);
+            throw error;
+        }
     }
     if (audioFile && folderName) {
         // Upload to Cloudinary
-        const audioUrl = await uploadToCloudinary(audioFile, folderName);
+        const audioUrl = await uploadToCloudinary(audioFile, folderName, req);
         value.audioUrl = audioUrl;
     }
 
@@ -362,14 +410,26 @@ module.exports.addRepeatSentence = asyncWrapper(async (req, res) => {
         throw new ExpressError(400, "question type or subtype is not valid!");
     }
 
+    if (!req.file) {
+        throw new ExpressError(400, "File is Required");
+    }
+
     const { type = 'speaking', subtype = 'repeat_sentence', heading } = newData;
+    const audioConvertedText = String(newData.audioConvertedText || '').trim();
+    const shouldTranscribeAudio = !audioConvertedText;
     const newQuestion = await addQuestion(
         repeatSentenceSchemaValidator,
-        { type, subtype, heading },
+        {
+            type,
+            subtype,
+            heading,
+            ...(audioConvertedText ? { audioConvertedText } : {}),
+        },
         req.user._id,
         req.file,
         'repeatSentence',
-        true
+        shouldTranscribeAudio,
+        req
     );
 
     return res.status(200).json({
@@ -392,6 +452,11 @@ module.exports.editRepeatSentence = asyncWrapper(async (req, res) => {
     const { questionId, ...data } = newData;
     data.type = 'speaking';
     data.subtype = 'repeat_sentence';
+    if (typeof data.audioConvertedText === 'string') {
+        data.audioConvertedText = data.audioConvertedText.trim();
+    }
+
+    const shouldTranscribeAudio = Boolean(req.file && !data.audioConvertedText);
 
     const question = await editQuestion(
         editrepeatSentenceSchemaValidator,
@@ -399,7 +464,9 @@ module.exports.editRepeatSentence = asyncWrapper(async (req, res) => {
         data,
         req.user._id,
         req.file,
-        'repeatSentence'
+        'repeatSentence',
+        shouldTranscribeAudio,
+        req
     );
 
     return res.status(200).json({
@@ -503,7 +570,9 @@ module.exports.addRespondToASituation = asyncWrapper(async (req, res) => {
         { type, subtype, heading, prompt },
         req.user._id,
         req.file,
-        'respondToASituation'
+        'respondToASituation',
+        false,
+        req
     );
 
     return res.status(200).json({
@@ -533,7 +602,9 @@ module.exports.editRespondToASituation = asyncWrapper(async (req, res) => {
         data,
         req.user._id,
         req.file,
-        'respondToASituation'
+        'respondToASituation',
+        false,
+        req
     );
 
     return res.status(200).json({
@@ -581,7 +652,8 @@ module.exports.addAnswerShortQuestion = asyncWrapper(async (req, res) => {
         req.user._id,
         req.file,
         'answerShortQuestion',
-        true
+        true,
+        req
     );
 
     return res.status(200).json({
@@ -605,6 +677,21 @@ module.exports.editAnswerShortQuestion = asyncWrapper(async (req, res) => {
     data.type = 'speaking';
     data.subtype = 'answer_short_question';
 
+    const existingQuestion = await questionsModel.findById(questionId);
+    if (!existingQuestion) {
+        throw new ExpressError(404, 'Question not found');
+    }
+
+    const nextCorrectText = typeof data.correctText === 'string'
+        ? data.correctText
+        : existingQuestion.correctText;
+
+    if (!String(nextCorrectText || '').trim()) {
+        throw new ExpressError(400, 'Accepted answers are required');
+    }
+
+    data.correctText = nextCorrectText;
+
     const question = await editQuestion(
         editanswerShortQuestionSchemaValidator,
         questionId,
@@ -613,6 +700,7 @@ module.exports.editAnswerShortQuestion = asyncWrapper(async (req, res) => {
         req.file,
         'answerShortQuestion',
         true,
+        req
     );
 
     return res.status(200).json({
@@ -650,7 +738,7 @@ module.exports.answerShortQuestionResult = asyncWrapper(async (req, res) => {
         try {
             const speechResponse = await scoreOpenEndedSpeech({
                 audioFilePath: userFilePath,
-                relevanceContext: buildAnswerShortQuestionRelevanceContext(question),
+                relevanceContext: question.audioConvertedText || question.prompt || question.heading,
                 accent,
             });
             const speechMetrics = mapOpenEndedSpeechResponse(speechResponse);
@@ -699,6 +787,7 @@ module.exports.answerShortQuestionResult = asyncWrapper(async (req, res) => {
             assessment: buildAnswerShortQuestionAssessment(normalizedResponse),
         });
 
+        /* Legacy GPT fallback removed.
         const prompt = `
 You are an expert language assessor, and your task is to evaluate the speaking and listening abilities of a user based on a question prompt and their response. Below are the inputs:
 
@@ -767,6 +856,7 @@ Please provide the following result in this format and Format your response as J
             data: normalizedResponse.data,
             assessment: buildAnswerShortQuestionAssessment(normalizedResponse),
         });
+        */
 
     } catch (error) {
         if (userFilePath) {

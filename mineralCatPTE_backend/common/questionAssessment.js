@@ -114,6 +114,7 @@ function buildReadAloudAssessment(data = {}) {
       badWords: toNumber(data.badWords, 0),
       transcript: data.transcript || "",
       transcriptWords: Array.isArray(data.transcriptWords) ? data.transcriptWords : [],
+      noSpeechDetected: Boolean(data.noSpeechDetected),
     },
   });
 }

@@ -284,6 +284,7 @@ module.exports.repeatSentenceSchemaValidator = Joi.object(
         type: Joi.string().required(),
         subtype: Joi.string().required(),
         heading: Joi.string().required(),
+        audioConvertedText: Joi.string().trim().optional(),
     }
 )
 module.exports.editrepeatSentenceSchemaValidator = Joi.object(
@@ -291,6 +292,7 @@ module.exports.editrepeatSentenceSchemaValidator = Joi.object(
         type: Joi.string().optional(),
         subtype: Joi.string().optional(),
         heading: Joi.string().optional(),
+        audioConvertedText: Joi.string().trim().optional(),
     }
 )
 
@@ -318,7 +320,7 @@ module.exports.answerShortQuestionSchemaValidator = Joi.object(
         type: Joi.string().required(),
         subtype: Joi.string().required(),
         heading: Joi.string().required(),
-        correctText: Joi.string().allow("").optional(),
+        correctText: Joi.string().trim().required(),
     }
 )
 
@@ -327,7 +329,7 @@ module.exports.editanswerShortQuestionSchemaValidator = Joi.object(
         type: Joi.string().optional(),
         subtype: Joi.string().optional(),
         heading: Joi.string().optional(),
-        correctText: Joi.string().allow("").optional(),
+        correctText: Joi.string().trim().min(1).optional(),
     }
 )
 

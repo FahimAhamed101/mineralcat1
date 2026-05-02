@@ -3,6 +3,7 @@ if (process.env.NODE_ENV != "production") {
 }
 
 const express = require("express");
+const path = require("node:path");
 const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const passport = require("passport");
@@ -109,6 +110,10 @@ app.use(cookieParser());
 app.use(passport.initialize());
 
 app.set("trust proxy", 1);
+
+if (process.env.NODE_ENV !== "production") {
+  app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+}
 
 app.use("/auth", authRoutes);
 app.use("/user", userRoutes);
