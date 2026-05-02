@@ -272,42 +272,30 @@ async function uploadToCloudinary(file, folderName, req) {
         return buildLocalUploadUrl(file, req);
     }
 
-    const baseUploadOptions = {
-        public_id: getAudioUploadPublicId(file),
-        folder: `listening_test/${folderName}`,
-        type: 'upload',
-    };
-    const rawPublicId = `${baseUploadOptions.public_id}${path.extname(file.originalname).toLowerCase()}`;
-
     try {
         const result = await cloudinary.uploader.upload(file.path, {
-            ...baseUploadOptions,
-            resource_type: 'video',
+            resource_type: 'video', // Cloudinary treats audio as video
+            type: 'upload',         // do NOT use authenticated for mp3 audio
+            folder: `listening_test/${folderName}`,
+            public_id: getAudioUploadPublicId(file),
+            use_filename: false,
+            unique_filename: false,
+            overwrite: false,
         });
 
         await safeDeleteFile(file.path);
         return result.secure_url;
     } catch (error) {
-        try {
-            const result = await cloudinary.uploader.upload(file.path, {
-                ...baseUploadOptions,
-                public_id: rawPublicId,
-                resource_type: 'raw',
-            });
-
-            await safeDeleteFile(file.path);
-            return result.secure_url;
-        } catch (fallbackError) {
-            if (canUseLocalUploadFallback(req)) {
-                return buildLocalUploadUrl(file, req);
-            }
-
-            await safeDeleteFile(file.path);
-            throw new ExpressError(
-                502,
-                `Audio upload failed: ${fallbackError.message || error.message}`
-            );
+        if (canUseLocalUploadFallback(req)) {
+            return buildLocalUploadUrl(file, req);
         }
+
+        await safeDeleteFile(file.path);
+
+        throw new ExpressError(
+            502,
+            `Audio upload failed: ${error?.message || 'Cloudinary upload failed'}`
+        );
     }
 }
 
