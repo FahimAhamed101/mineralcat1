@@ -1,4 +1,19 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import { persistQuestionScoreHistoryFromResponse } from "@/lib/questionScoreHistory";
+
+async function persistScoreHistoryIfNeeded(response, url, options) {
+  if (!response?.ok || !String(url || "").includes("/result")) {
+    return;
+  }
+
+  try {
+    const payload = await response.clone().json();
+    persistQuestionScoreHistoryFromResponse({ url, options, payload });
+  } catch {
+    // Ignore non-JSON responses and keep the original request flow intact.
+  }
+}
+
 export default async function fetchWithAuth(url, options = {}) {
   let accessToken = localStorage.getItem("accessToken");
   let refreshToken = localStorage.getItem("refreshToken");
@@ -62,6 +77,7 @@ export default async function fetchWithAuth(url, options = {}) {
     }
   }
 
+  await persistScoreHistoryIfNeeded(response, url, options);
   return response;
 }
 

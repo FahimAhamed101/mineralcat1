@@ -105,7 +105,7 @@ function ResultModal({ isOpen, onClose, serverResponse, question }) {
         <div className="bg-gradient-to-r from-[#7D0000] to-[#c0392b] px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-white text-xl font-bold">Answer Short Question - AI Score</h2>
-            <p className="text-white/75 text-sm mt-0.5">Scored against the expected answer</p>
+            <p className="text-white/75 text-sm mt-0.5">Scored against the accepted answers list</p>
           </div>
           <button
             onClick={onClose}
@@ -133,7 +133,7 @@ function ResultModal({ isOpen, onClose, serverResponse, question }) {
             <div className="grid gap-4">
               <div className="rounded-xl border border-[#d7ece0] bg-[#fbfffc] p-4">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
-                  Expected Answer
+                  Accepted Answers
                 </p>
                 <p className="text-[15px] leading-7 text-gray-800">{expectedAnswer}</p>
               </div>
@@ -203,8 +203,8 @@ function ResultModal({ isOpen, onClose, serverResponse, question }) {
           <div className="bg-[#fffbea] border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
             <p className="font-bold mb-1">Evaluation rule</p>
             <p>
-              This task uses a direct expected-answer comparison. Matching the stored correct
-              answer gives a score of 1; otherwise the score is 0.
+              This task uses transcript matching against the accepted answers list. A matching
+              accepted answer or synonym scores 1; wrong, empty, unclear, or irrelevant answers score 0.
             </p>
             <p className="mt-2">
               Enabling skills: <span className="font-semibold">{scoreData.enablingSkills}</span>

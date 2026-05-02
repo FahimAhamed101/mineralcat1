@@ -7,6 +7,7 @@ import {
   getAssessmentTrait,
   getQuestionAssessment,
 } from "@/lib/questionAssessment";
+import { loadQuestionScoreHistory } from "@/lib/questionScoreHistory";
 
 const RECORD_SECONDS = 35;
 const DISPLAY_SCORE_MAX = 90;
@@ -158,6 +159,29 @@ function PreviousScoreCard({ item }) {
   );
 }
 
+function buildReadAloudPreviousScores(questionId) {
+  return loadQuestionScoreHistory(questionId, "read_aloud").map((entry) => {
+    const assessment = entry?.assessment || {};
+    const speakingScore = Number(
+      (Array.isArray(assessment.skills) ? assessment.skills : []).find(
+        (metric) => metric?.key === "speaking"
+      )?.score ?? 0
+    );
+    const readingScore = Number(
+      (Array.isArray(assessment.skills) ? assessment.skills : []).find(
+        (metric) => metric?.key === "reading"
+      )?.score ?? 0
+    );
+
+    return {
+      id: entry?.id || entry?.createdAt || `${questionId}-${Math.random()}`,
+      speaking: toDisplayOutOf90(speakingScore),
+      reading: toDisplayOutOf90(readingScore),
+      timeLabel: entry?.timeLabel || "-",
+    };
+  });
+}
+
 function ResultModal({ isOpen, onClose, result }) {
   useEffect(() => {
     document.body.style.overflow = isOpen ? "hidden" : "";
@@ -179,6 +203,7 @@ function ResultModal({ isOpen, onClose, result }) {
   const averageWords = getAssessmentMeta(assessment, "averageWords", 0);
   const badWords = getAssessmentMeta(assessment, "badWords", 0);
   const transcript = getAssessmentMeta(assessment, "transcript", "");
+  const noSpeechDetected = getAssessmentMeta(assessment, "noSpeechDetected", false);
   const transcriptWords = normalizeTranscriptWords(
     getAssessmentMeta(assessment, "transcriptWords", []),
     transcript
@@ -326,7 +351,11 @@ function ResultModal({ isOpen, onClose, result }) {
 
               <div className="bg-[#fffbea] border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
                 <p className="font-bold mb-1">Tips to improve</p>
-                {contentIsZero ? (
+                {noSpeechDetected ? (
+                  <p>
+                    No speech was detected in your recording. This attempt is scored as 0 for speaking, reading, content, fluency, and pronunciation.
+                  </p>
+                ) : contentIsZero ? (
                   <p>
                     No correct words matched the prompt. Your content score is 0. By official PTE
                     scoring rules, this response receives no score points, so all scores are 0.
@@ -407,12 +436,16 @@ export default function ReadAloudPage({ params }) {
       try {
         const res = await fetchWithAuth(`${baseUrl}/user/get-question/${id}`);
         const data = await res.json();
-        setQuestion(data?.question ?? null);
+        const nextQuestion = data?.question ?? null;
+        setQuestion(nextQuestion);
+        setPreviousScores(
+          nextQuestion?._id ? buildReadAloudPreviousScores(nextQuestion._id) : []
+        );
       } catch {
         setQuestion(null);
+        setPreviousScores([]);
       }
       setLoading(false);
-      setPreviousScores([]);
       reset();
     }
     load();
@@ -534,25 +567,7 @@ export default function ReadAloudPage({ params }) {
 
       const data = await res.json();
       setResult(data);
-      const assessment = getQuestionAssessment(data, "read_aloud");
-      const speakingScore = getAssessmentSkill(assessment, "speaking")?.score ?? 0;
-      const readingScore = getAssessmentSkill(assessment, "reading")?.score ?? 0;
-      const now = new Date();
-      const timeLabel = `${String(now.getHours()).padStart(2, "0")}:${String(
-        now.getMinutes()
-      ).padStart(2, "0")}  ${String(now.getDate()).padStart(2, "0")}/${String(
-        now.getMonth() + 1
-      ).padStart(2, "0")}/${now.getFullYear()}`;
-
-      setPreviousScores((current) => [
-        {
-          id: `${Date.now()}`,
-          speaking: toDisplayOutOf90(speakingScore),
-          reading: toDisplayOutOf90(readingScore),
-          timeLabel,
-        },
-        ...current,
-      ].slice(0, 5));
+      setPreviousScores(buildReadAloudPreviousScores(question._id));
       setShowModal(true);
     } catch (e) {
       setError(getFriendlySpeechErrorMessage(e.message));
