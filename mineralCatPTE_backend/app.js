@@ -111,7 +111,7 @@ app.use(passport.initialize());
 
 app.set("trust proxy", 1);
 
-if (process.env.NODE_ENV !== "production") {
+if (process.env.SERVE_LOCAL_UPLOADS !== "false") {
   app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 }
 

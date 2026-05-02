@@ -12,7 +12,6 @@ const {
 } = require("../../validations/schemaValidations");
 const cloudinary = require('../../middleware/cloudinary.config');
 const path = require('path');
-const fs = require('node:fs');
 const { asyncWrapper } = require("../../utils/AsyncWrapper");
 const fsPromises = require('fs').promises;
 const practicedModel = require("../../models/practiced.model");
@@ -109,6 +108,29 @@ function buildLocalUploadUrl(file, req) {
 
     const fileName = path.basename(file.path);
     return `${req.protocol}://${req.get('host')}/uploads/${fileName}`;
+}
+
+function canUseLocalUploadFallback(req) {
+    if (process.env.LOCAL_UPLOAD_FALLBACK === 'true') {
+        return true;
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+        return true;
+    }
+
+    const host = String(req?.get?.('host') || '').toLowerCase();
+    return host.startsWith('localhost') || host.startsWith('127.0.0.1');
+}
+
+function getAudioUploadPublicId(file) {
+    const baseName = path.basename(file.originalname, path.extname(file.originalname));
+    const safeBaseName = baseName
+        .replace(/[^a-z0-9_-]+/gi, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80) || 'audio';
+
+    return `${safeBaseName}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 }
 
 function clampScore(value, min, max) {
@@ -243,31 +265,67 @@ async function uploadToCloudinary(file, folderName, req) {
     if (!file) throw new ExpressError(400, 'Please upload a file');
 
     if (!hasCloudinaryCredentials()) {
-        if (process.env.NODE_ENV === 'production') {
+        if (!canUseLocalUploadFallback(req)) {
             throw new ExpressError(500, 'Cloudinary is not configured for audio uploads');
         }
 
         return buildLocalUploadUrl(file, req);
     }
 
-    let result;
+    const baseUploadOptions = {
+        public_id: getAudioUploadPublicId(file),
+        folder: `listening_test/${folderName}`,
+        type: 'upload',
+    };
+    const rawPublicId = `${baseUploadOptions.public_id}${path.extname(file.originalname).toLowerCase()}`;
+
     try {
-        result = await cloudinary.uploader.upload(file.path, {
+        const result = await cloudinary.uploader.upload(file.path, {
+            ...baseUploadOptions,
             resource_type: 'video',
-            public_id: `${path.basename(file.originalname, path.extname(file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-            folder: `listening_test/${folderName}`,
-            type: 'authenticated',
         });
+
+        await safeDeleteFile(file.path);
+        return result.secure_url;
     } catch (error) {
-        if (process.env.NODE_ENV !== 'production') {
+        try {
+            const result = await cloudinary.uploader.upload(file.path, {
+                ...baseUploadOptions,
+                public_id: rawPublicId,
+                resource_type: 'raw',
+            });
+
+            await safeDeleteFile(file.path);
+            return result.secure_url;
+        } catch (fallbackError) {
+            if (canUseLocalUploadFallback(req)) {
+                return buildLocalUploadUrl(file, req);
+            }
+
+            await safeDeleteFile(file.path);
+            throw new ExpressError(
+                502,
+                `Audio upload failed: ${fallbackError.message || error.message}`
+            );
+        }
+    }
+}
+
+async function uploadAudioFile(file, folderName, req) {
+    try {
+        return await uploadToCloudinary(file, folderName, req);
+    } catch (error) {
+        const message = String(error?.message || '');
+
+        if (
+            canUseLocalUploadFallback(req) &&
+            message.toLowerCase().includes('image file format')
+        ) {
             return buildLocalUploadUrl(file, req);
         }
 
-        throw new ExpressError(502, `Audio upload failed: ${error.message}`);
+        throw error;
     }
-
-    fs.unlinkSync(file.path);
-    return result.secure_url;
 }
 
 async function addQuestion(validator, data, userId, audioFile = null, folderName = null, convertToText = false, req = null) {
@@ -288,7 +346,7 @@ async function addQuestion(validator, data, userId, audioFile = null, folderName
         }
     }
     if (audioFile && folderName) {
-        questionData.audioUrl = await uploadToCloudinary(audioFile, folderName, req);
+        questionData.audioUrl = await uploadAudioFile(audioFile, folderName, req);
     }
 
     const newQuestion = await questionsModel.create(questionData);
@@ -311,7 +369,7 @@ async function editQuestion(validator, questionId, data, userId, audioFile = nul
     }
     if (audioFile && folderName) {
         // Upload to Cloudinary
-        const audioUrl = await uploadToCloudinary(audioFile, folderName, req);
+        const audioUrl = await uploadAudioFile(audioFile, folderName, req);
         value.audioUrl = audioUrl;
     }
 
