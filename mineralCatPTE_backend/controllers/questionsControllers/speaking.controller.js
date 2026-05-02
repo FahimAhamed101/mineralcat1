@@ -262,39 +262,57 @@ function buildSpeechAceAnswerShortQuestionResult({
 }
 
 async function uploadToCloudinary(file, folderName, req) {
-    if (!file) throw new ExpressError(400, 'Please upload a file');
+    if (!file) {
+        throw new ExpressError(400, "Please upload a file");
+    }
+
+    if (!file.path) {
+        throw new ExpressError(400, "Uploaded file path is missing");
+    }
 
     if (!hasCloudinaryCredentials()) {
         if (!canUseLocalUploadFallback(req)) {
-            throw new ExpressError(500, 'Cloudinary is not configured for audio uploads');
+            throw new ExpressError(500, "Cloudinary is not configured for audio uploads");
         }
 
         return buildLocalUploadUrl(file, req);
     }
 
+    const uploadOptions = {
+        folder: `listening_test/${folderName}`,
+        public_id: getAudioUploadPublicId(file),
+        type: "upload",
+        use_filename: false,
+        unique_filename: false,
+        overwrite: false,
+    };
+
     try {
-        const result = await cloudinary.uploader.upload(file.path, {
-            resource_type: 'video', // Cloudinary treats audio as video
-            type: 'upload',         // do NOT use authenticated for mp3 audio
-            folder: `listening_test/${folderName}`,
-            public_id: getAudioUploadPublicId(file),
-            use_filename: false,
-            unique_filename: false,
-            overwrite: false,
+        console.log("Uploading audio to Cloudinary:", {
+            path: file.path,
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            uploadOptions,
         });
+
+        const result = await cloudinary.uploader.upload_large(
+            file.path,
+            uploadOptions,
+            {
+                resource_type: "video",
+            }
+        );
 
         await safeDeleteFile(file.path);
         return result.secure_url;
     } catch (error) {
-        if (canUseLocalUploadFallback(req)) {
-            return buildLocalUploadUrl(file, req);
-        }
+        console.error("Cloudinary audio upload failed:", error);
 
         await safeDeleteFile(file.path);
 
         throw new ExpressError(
             502,
-            `Audio upload failed: ${error?.message || 'Cloudinary upload failed'}`
+            `Audio upload failed: ${error?.message || "Cloudinary upload failed"}`
         );
     }
 }
