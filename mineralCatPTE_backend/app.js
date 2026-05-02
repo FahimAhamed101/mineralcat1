@@ -142,6 +142,12 @@ app.use((req, res, next) => {
 });
 
 app.use((err, req, res, next) => {
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(400).json({
+      message: "Uploaded file is too large. Maximum file size is 25MB.",
+    });
+  }
+
   const { status = 500, message = "Some error happend" } = err;
   res.status(status).json({ message });
 });

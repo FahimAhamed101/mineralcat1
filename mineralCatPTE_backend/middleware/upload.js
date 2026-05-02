@@ -1,6 +1,8 @@
 const multer = require('multer');
 const path = require('path');
 
+const DEFAULT_FILE_SIZE_LIMIT = 25 * 1024 * 1024; // 25MB
+
 const MIME_TYPE_EXTENSION_MAP = {
     'audio/mpeg': '.mp3',
     'audio/mp3': '.mp3',
@@ -26,11 +28,12 @@ const storage = multer.diskStorage({
 /**
  * Returns a multer middleware configured to accept only specific file extensions.
  * @param {string[]} allowedExtensions - e.g. ['.jpg', '.png', '.pdf']
+ * @param {{ fileSize?: number }} options
  */
-const createUploadMiddleware = (allowedExtensions) => {
+const createUploadMiddleware = (allowedExtensions, options = {}) => {
     return multer({
         storage,
-        limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+        limits: { fileSize: options.fileSize || DEFAULT_FILE_SIZE_LIMIT },
         fileFilter: (req, file, cb) => {
             const ext = path.extname(file.originalname).toLowerCase();
             const normalizedMimeExtension = MIME_TYPE_EXTENSION_MAP[String(file.mimetype || '').toLowerCase()];
@@ -38,7 +41,9 @@ const createUploadMiddleware = (allowedExtensions) => {
             if (allowedExtensions.includes(ext) || (normalizedMimeExtension && allowedExtensions.includes(normalizedMimeExtension))) {
                 cb(null, true);
             } else {
-                cb(new Error(`Only ${allowedExtensions.join(', ')} files are allowed!`));
+                const error = new Error(`Only ${allowedExtensions.join(', ')} files are allowed!`);
+                error.status = 400;
+                cb(error);
             }
         }
     });
