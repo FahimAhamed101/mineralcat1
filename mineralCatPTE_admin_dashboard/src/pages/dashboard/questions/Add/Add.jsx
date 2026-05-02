@@ -7,6 +7,15 @@ import { toast } from "react-toastify";
 import { useLocation, useNavigate } from "react-router";
 import AudioInput from "../audio/AudioInput";
 
+async function getResponseErrorMessage(response) {
+  try {
+    const data = await response.json();
+    return data?.message || data?.error || "Request failed";
+  } catch {
+    return `Request failed with status ${response.status}`;
+  }
+}
+
 export default function Add() {
   const [heading, setHeading] = useState("");
   const [questionText, setQuestionText] = useState("");
@@ -18,87 +27,78 @@ export default function Add() {
   const location = useLocation();
   const api = location?.state?.api || "No previous page";
   const from = location?.state?.from || "Not found"; // For debugging
+  const isRepeatSentence = api === "/test/speaking/repeat_sentence";
+  const isAnswerShortQuestion = api === "/test/speaking/answer_short_question";
+  const isRespondToSituation = api === "/test/speaking/respond-to-a-situation";
+  const textFieldLabel = isRepeatSentence
+    ? "Expected Transcript (optional)"
+    : isAnswerShortQuestion
+      ? "Accepted Answers"
+      : "Question Text";
+  const textFieldPlaceholder = isAnswerShortQuestion
+    ? "Enter accepted answers. Use one per line or separate with |"
+    : isRepeatSentence
+    ? "Leave blank to generate with SpeechAce"
+    : "Enter body";
 
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if the API is provided in the location state
-    if (
-      location.state &&
-      location.state.api === "/test/speaking/repeat_sentence" || location.state.api === "/test/speaking/answer_short_question"
-    ) {
-      setShowTextArea(false);
+    if (isRepeatSentence) {
+      setShowTextArea(true);
       setShowInput(true);
-    } else if (
-      location.state &&
-      location.state.api === "/test/speaking/respond-to-a-situation"
-    ) {
-      // Example: handle a different API endpoint
+    } else if (isAnswerShortQuestion || isRespondToSituation) {
       setShowTextArea(true);
       setShowInput(true);
     } else {
       setShowTextArea(true);
       setShowInput(false);
     }
-  }, [location.state]);
+  }, [isAnswerShortQuestion, isRepeatSentence, isRespondToSituation]);
 
   const handleUpdate = () => {
-    // Check if heading or questionText is empty
     setLoading(true);
     if (!heading || !api) {
       toast.error("Please fill in all fields before updating.");
+      setLoading(false);
       return;
     }
 
-    if (!showTextarea && showInput && audio) {
-      // If audio is being uploaded, create FormData and send it
-      const formData = new FormData();
-      formData.append("heading", heading);
-      formData.append("voice", audio); // `audio` must be a File or Blob
-      formData.append("type", location.state?.type || ""); // Include the unique part for editing
-      formData.append("subtype", location.state?.subtype || ""); // Include the unique part for editing
-
-      fetchWithAuth(`${baseUrl}${api}`, {
-        method: "POST",
-        body: formData, // Do NOT set Content-Type manually
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error("Network response was not ok");
-          }
-          return response.json();
-        })
-        .then((data) => {
-          Swal.fire({
-            title: "Success",
-            text: "Question updated successfully!",
-            icon: "success",
-            confirmButtonText: "OK",
-          });
-          // Optionally redirect or show success message
-          window.location.href = from; // Redirect to the read-aloud page
-        })
-        .catch((error) => {
-          console.error("Error updating question:", error);
-          toast.error("Error updating the question.");
-        });
+    if (showInput && !audio) {
+      toast.error("Please upload an audio file before updating.");
       setLoading(false);
-      return; // Exit early if audio is being uploaded
-    }else if(showInput && showInput && audio){
+      return;
+    }
+
+    if (isAnswerShortQuestion && !questionText.trim()) {
+      toast.error("Please add the accepted answers list.");
+      setLoading(false);
+      return;
+    }
+
+    if (showInput && audio) {
       const formData = new FormData();
       formData.append("heading", heading);
-      formData.append("prompt", questionText);
-      formData.append("voice", audio); // `audio` must be a File or Blob
-      formData.append("type", location.state?.type || ""); // Include the unique part for editing
-      formData.append("subtype", location.state?.subtype || ""); // Include the unique part for editing
+      if (showTextarea && questionText.trim()) {
+        if (isAnswerShortQuestion) {
+          formData.append("correctText", questionText.trim());
+        } else if (isRepeatSentence) {
+          formData.append("audioConvertedText", questionText.trim());
+        } else {
+          formData.append("prompt", questionText);
+        }
+      }
+      formData.append("voice", audio);
+      formData.append("type", location.state?.type || "");
+      formData.append("subtype", location.state?.subtype || "");
 
       fetchWithAuth(`${baseUrl}${api}`, {
         method: "POST",
-        body: formData, // Do NOT set Content-Type manually
+        body: formData,
       })
-        .then((response) => {
+        .then(async (response) => {
           if (!response.ok) {
-            throw new Error("Network response was not ok");
+            throw new Error(await getResponseErrorMessage(response));
           }
           return response.json();
         })
@@ -109,12 +109,11 @@ export default function Add() {
             icon: "success",
             confirmButtonText: "OK",
           });
-          // Optionally redirect or show success message
           window.location.href = from; // Redirect to the read-aloud page
         })
         .catch((error) => {
           console.error("Error updating question:", error);
-          toast.error("Error updating the question.");
+          toast.error(error?.message || "Error updating the question.");
         });
       setLoading(false);
       return;
@@ -129,13 +128,16 @@ export default function Add() {
         heading,
         subtype :location.state?.subtype,
         type: location.state?.type || "", // Include the unique part for editing
-        prompt: questionText,
-        // You can add other fields as needed
+        ...(isAnswerShortQuestion
+          ? { correctText: questionText.trim() }
+          : isRepeatSentence
+          ? { audioConvertedText: questionText.trim() }
+          : { prompt: questionText }),
       }),
     })
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) {
-          throw new Error("Network response was not ok");
+          throw new Error(await getResponseErrorMessage(response));
         }
         return response.json();
       })
@@ -146,14 +148,12 @@ export default function Add() {
           icon: "success",
           confirmButtonText: "OK",
         });
-        // Optionally redirect or show success message
         setLoading(false);
-        // Redirect to the read-aloud page
         window.location.href = from; // Redirect to the read-aloud page
       })
       .catch((error) => {
         console.error("Error updating question:", error);
-        toast.error("Error updating the question.");
+        toast.error(error?.message || "Error updating the question.");
       });
     setLoading(false);
   };
@@ -191,15 +191,20 @@ export default function Add() {
         {showTextarea && (
           <div className="mb-8">
             <label className="block text-gray-700 text-sm font-medium mb-2">
-              Question Text
+              {textFieldLabel}
             </label>
             <textarea
               value={questionText}
               onChange={(e) => setQuestionText(e.target.value)}
-              placeholder="Enter body"
+              placeholder={textFieldPlaceholder}
               rows={4}
               className="w-full px-3 py-3 bg-gray-200 border-0 rounded-md text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-700 focus:bg-white transition-colors resize-none"
             />
+            {isAnswerShortQuestion && (
+              <p className="mt-2 text-xs text-gray-500">
+                Add every accepted answer or synonym here. Use one per line or separate them with <code>|</code>.
+              </p>
+            )}
           </div>
         )}
 
