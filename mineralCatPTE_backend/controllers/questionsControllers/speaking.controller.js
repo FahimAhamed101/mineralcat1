@@ -27,6 +27,7 @@ const {
     speakingevaluateRepeatSentenceResult,
     speakingrespondToASituationResult,
 } = require("../mockTestControllers/questionResultHelper/fullMockTest.result.controller");
+const { storeAudioFile } = require("../../services/gridfsAudio.service");
 
 
 function getSpeechAceTranscript(fullResponse) {
@@ -141,6 +142,14 @@ function isCloudinaryAudioFormatError(error) {
         message.includes('image file format') ||
         message.includes('resource_type')
     );
+}
+
+async function storeAudioFallback(file, folderName, req) {
+    try {
+        return await storeAudioFile(file, folderName, req);
+    } finally {
+        await safeDeleteFile(file?.path);
+    }
 }
 
 function clampScore(value, min, max) {
@@ -282,7 +291,7 @@ async function uploadToCloudinary(file, folderName, req) {
 
     if (!hasCloudinaryCredentials()) {
         if (!canUseLocalUploadFallback(req)) {
-            throw new ExpressError(500, "Cloudinary is not configured for audio uploads");
+            return await storeAudioFallback(file, folderName, req);
         }
 
         return buildLocalUploadUrl(file, req);
@@ -317,8 +326,13 @@ async function uploadToCloudinary(file, folderName, req) {
     } catch (error) {
         console.error("Cloudinary audio upload failed:", error);
 
-        if (canUseLocalUploadFallback(req) && isCloudinaryAudioFormatError(error)) {
-            console.warn("Using local audio upload fallback after Cloudinary format error");
+        if (isCloudinaryAudioFormatError(error)) {
+            console.warn("Using MongoDB audio storage fallback after Cloudinary format error");
+            return await storeAudioFallback(file, folderName, req);
+        }
+
+        if (canUseLocalUploadFallback(req)) {
+            console.warn("Using local audio upload fallback after Cloudinary upload error");
             return buildLocalUploadUrl(file, req);
         }
 

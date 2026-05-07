@@ -29,6 +29,7 @@ const privacy = require("./routes/adminRoutes/privacypolicy.routes");
 const templateRoutes = require("./routes/template.routes");
 const predictionRoutes = require("./routes/prediction.routes");
 const ExpressError = require("./utils/ExpressError");
+const { streamAudioFile } = require("./services/gridfsAudio.service");
 
 const app = express();
 
@@ -114,6 +115,8 @@ app.set("trust proxy", 1);
 if (process.env.SERVE_LOCAL_UPLOADS !== "false") {
   app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 }
+
+app.get("/media/audio/:id", streamAudioFile);
 
 app.use("/auth", authRoutes);
 app.use("/user", userRoutes);
