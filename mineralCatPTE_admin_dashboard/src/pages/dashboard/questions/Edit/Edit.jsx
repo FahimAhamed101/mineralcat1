@@ -4,7 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import fetchWithAuth from "../../../../utils/fetchWithAuth";
 import Swal from "sweetalert2";
 import { toast } from "react-toastify";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import AudioInput from "../audio/AudioInput";
 
 async function getResponseErrorMessage(response) {
@@ -25,9 +25,11 @@ export default function Edit() {
   const [showInput, setShowInput] = useState(false);
   const baseUrl = import.meta.env.VITE_ADMIN_URL || "";
   const location = useLocation();
+  const { id: routeQuestionId } = useParams();
   const api = location?.state?.api || "No previous page";
   const from = location?.state?.from || "Not found"; // For debugging
-  const uniquePart = location?.state?.uniquePart || "No unique part"; // For debugging
+  const uniquePart = location?.state?.uniquePart || routeQuestionId || ""; // For debugging
+  const initialQuestion = location?.state?.question || null;
   const isRepeatSentence = api === "/test/speaking/repeat_sentence";
   const isAnswerShortQuestion = api === "/test/speaking/answer_short_question";
   const isRespondToSituation = api === "/test/speaking/respond-to-a-situation";
@@ -56,6 +58,21 @@ export default function Edit() {
     }
   }, [isAnswerShortQuestion, isRepeatSentence, isRespondToSituation]);
 
+  useEffect(() => {
+    if (!initialQuestion) return;
+
+    setHeading(initialQuestion.heading || "");
+    setAudio(initialQuestion.audioUrl || "");
+
+    if (isAnswerShortQuestion) {
+      setQuestionText(initialQuestion.correctText || "");
+    } else if (isRepeatSentence) {
+      setQuestionText(initialQuestion.audioConvertedText || "");
+    } else {
+      setQuestionText(initialQuestion.prompt || "");
+    }
+  }, [initialQuestion, isAnswerShortQuestion, isRepeatSentence]);
+
   const handleUpdate = () => {
     setLoading(true);
     if (!heading || !api) {
@@ -70,7 +87,9 @@ export default function Edit() {
       return;
     }
 
-    if (showInput && audio) {
+    const hasNewAudioFile = typeof File !== "undefined" && audio instanceof File;
+
+    if (showInput && hasNewAudioFile) {
       const formData = new FormData();
       formData.append("heading", heading);
       formData.append("questionId", uniquePart); // Include the unique part for editing

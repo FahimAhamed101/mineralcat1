@@ -111,6 +111,8 @@ export default function ResponseSitutation() {
       state: {
         from: location.pathname,
         api: "/test/speaking/respond-to-a-situation",
+        uniquePart: item._id,
+        question: item,
       },
     });
   };
