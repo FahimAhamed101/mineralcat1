@@ -246,6 +246,7 @@ export default function RespondToSituationPage({ params }) {
   const [audioPlaying, setAudioPlaying] = useState(false);
   const audioRef = useRef();
   const promptText = question?.audioConvertedText || question?.prompt || "";
+  const audioSrc = String(question?.audioUrl || "").trim();
 
   // MicRecorder instance
   const recorder = useRef(null);
@@ -398,15 +399,20 @@ export default function RespondToSituationPage({ params }) {
 
       {/* Audio Player */}
       <div className="border border-[#810000] rounded p-4 mb-4 bg-[#faf9f9] flex flex-col items-center">
-        {question.audioUrl && (
+        {audioSrc ? (
           <audio
             ref={audioRef}
-            src={question.audioUrl}
+            src={audioSrc}
             onPlay={handleAudioPlay}
             onEnded={handleAudioEnded}
+            preload="metadata"
             controls
             style={{ width: "100%" }}
           />
+        ) : (
+          <p className="text-sm font-medium text-gray-500">
+            Audio prompt is missing for this question.
+          </p>
         )}
       </div>
 
