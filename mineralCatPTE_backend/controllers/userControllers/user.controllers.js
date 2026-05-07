@@ -220,7 +220,7 @@ module.exports.updateUser = asyncWrapper(async (req, res) => {
 
   if (req.file) {
     try {
-      const result = await cloudinary.uploader.upload(req.file.path, {
+      const result = await cloudinary.uploader.upload(req.file.path, undefined, {
         resource_type: 'auto',
         public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         folder: `listening_test/${folderName}`,

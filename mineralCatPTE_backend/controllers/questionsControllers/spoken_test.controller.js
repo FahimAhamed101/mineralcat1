@@ -213,7 +213,7 @@ module.exports.addSummarizeSpokenText = asyncWrapper(async (req, res) => {
 
     const folderName = 'summarizeSpokenText';
 
-    const result = await cloudinary.uploader.upload(req.file.path, {
+    const result = await cloudinary.uploader.upload(req.file.path, undefined, {
         resource_type: 'auto',
         public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         folder: `listening_test/${folderName}`,
@@ -266,7 +266,7 @@ module.exports.editSummarizeSpokenText = asyncWrapper(async (req, res) => {
         const folderName = 'summarizeSpokenText';
 
         // Upload to Cloudinary
-        const result = await cloudinary.uploader.upload(req.file.path, {
+        const result = await cloudinary.uploader.upload(req.file.path, undefined, {
             resource_type: 'auto',
             public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             folder: `listening_test/${folderName}`,
@@ -412,7 +412,7 @@ module.exports.addMultipleChoicesAndMultipleAnswers = asyncWrapper(async (req, r
 
     const folderName = 'multiplechoicesmultipleanswers';
 
-    const result = await cloudinary.uploader.upload(req.file.path, {
+    const result = await cloudinary.uploader.upload(req.file.path, undefined, {
         resource_type: 'auto',
         public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         folder: `listening_test/${folderName}`,
@@ -456,7 +456,7 @@ module.exports.editMultipleChoicesAndMultipleAnswers = asyncWrapper(async (req, 
 
     if (req.file !== undefined) {
         const folderName = 'multiplechoicesmultipleanswers';
-        const result = await cloudinary.uploader.upload(req.file.path, {
+        const result = await cloudinary.uploader.upload(req.file.path, undefined, {
             resource_type: 'auto',
             public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             folder: `listening_test/${folderName}`,
@@ -561,7 +561,7 @@ module.exports.addListeningFillInTheBlanks = asyncWrapper(async (req, res) => {
 
     const folderName = 'listeningfillintheblanks';
 
-    const result = await cloudinary.uploader.upload(req.file.path, {
+    const result = await cloudinary.uploader.upload(req.file.path, undefined, {
         resource_type: 'auto',
         public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         folder: `listening_test/${folderName}`,
@@ -602,7 +602,7 @@ module.exports.editListeningFillInTheBlanks = asyncWrapper(async (req, res) => {
 
     if (req.file !== undefined) {
         const folderName = 'listeningfillintheblanks';
-        const result = await cloudinary.uploader.upload(req.file.path, {
+        const result = await cloudinary.uploader.upload(req.file.path, undefined, {
             resource_type: 'auto',
             public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             folder: `listening_test/${folderName}`,
@@ -717,7 +717,7 @@ module.exports.addMultipleChoiceSingleAnswers = asyncWrapper(async (req, res) =>
 
     const folderName = 'multiplechoicesingleanswers';
 
-    const result = await cloudinary.uploader.upload(req.file.path, {
+    const result = await cloudinary.uploader.upload(req.file.path, undefined, {
         resource_type: 'auto',
         public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         folder: `listening_test/${folderName}`,
@@ -765,7 +765,7 @@ module.exports.editMultipleChoiceSingleAnswers = asyncWrapper(async (req, res) =
     // Handle file upload (optional)
     if (req.file !== undefined) {
         const folderName = 'multiplechoicesingleanswers';
-        const result = await cloudinary.uploader.upload(req.file.path, {
+        const result = await cloudinary.uploader.upload(req.file.path, undefined, {
             resource_type: 'auto',
             public_id: `${path.basename(req.file.originalname, path.extname(req.file.originalname))}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             folder: `listening_test/${folderName}`,

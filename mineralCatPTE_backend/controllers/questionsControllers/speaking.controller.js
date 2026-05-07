@@ -306,7 +306,7 @@ async function uploadToCloudinary(file, folderName, req) {
             uploadOptions,
         });
 
-        const result = await cloudinary.uploader.upload(file.path, uploadOptions);
+        const result = await cloudinary.uploader.upload(file.path, undefined, uploadOptions);
 
         if (!result?.secure_url) {
             throw new Error("Cloudinary upload did not return an audio URL");
