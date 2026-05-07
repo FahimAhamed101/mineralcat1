@@ -35,7 +35,7 @@ const useCloudinary = () =>
 
 const uploadPdfToCloudinary = async (file, folderName) => {
   if (!file) throw new ExpressError(400, "Please upload a PDF file");
-  const result = await cloudinary.uploader.upload(file.path, undefined, {
+  const result = await cloudinary.uploader.upload(file.path, {
     folder: folderName,
     resource_type: "raw",
     access_mode: "public",
@@ -48,7 +48,7 @@ const uploadPdfToCloudinary = async (file, folderName) => {
 const deleteCloudinaryAsset = async (publicId) => {
   if (!publicId) return;
   try {
-    await cloudinary.uploader.destroy(publicId, undefined, { resource_type: "raw" });
+    await cloudinary.uploader.destroy(publicId, { resource_type: "raw" });
   } catch (error) {
     // Ignore delete errors
   }
