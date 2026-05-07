@@ -107,7 +107,7 @@ function buildLocalUploadUrl(file, req) {
     }
 
     const fileName = path.basename(file.path);
-    return `${req.protocol}://${req.get('host')}/uploads/${fileName}`;
+    return `${req.protocol}://${req.get('host')}/uploads/${encodeURIComponent(fileName)}`;
 }
 
 function canUseLocalUploadFallback(req) {
@@ -131,6 +131,16 @@ function getAudioUploadPublicId(file) {
         .slice(0, 80) || 'audio';
 
     return `${safeBaseName}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+}
+
+function isCloudinaryAudioFormatError(error) {
+    const message = String(error?.message || '').toLowerCase();
+
+    return (
+        message.includes('invalid image file') ||
+        message.includes('image file format') ||
+        message.includes('resource_type')
+    );
 }
 
 function clampScore(value, min, max) {
@@ -279,6 +289,7 @@ async function uploadToCloudinary(file, folderName, req) {
     }
 
     const uploadOptions = {
+        resource_type: "video",
         folder: `listening_test/${folderName}`,
         public_id: getAudioUploadPublicId(file),
         type: "upload",
@@ -295,18 +306,21 @@ async function uploadToCloudinary(file, folderName, req) {
             uploadOptions,
         });
 
-        const result = await cloudinary.uploader.upload_large(
-            file.path,
-            uploadOptions,
-            {
-                resource_type: "video",
-            }
-        );
+        const result = await cloudinary.uploader.upload(file.path, uploadOptions);
+
+        if (!result?.secure_url) {
+            throw new Error("Cloudinary upload did not return an audio URL");
+        }
 
         await safeDeleteFile(file.path);
         return result.secure_url;
     } catch (error) {
         console.error("Cloudinary audio upload failed:", error);
+
+        if (canUseLocalUploadFallback(req) && isCloudinaryAudioFormatError(error)) {
+            console.warn("Using local audio upload fallback after Cloudinary format error");
+            return buildLocalUploadUrl(file, req);
+        }
 
         await safeDeleteFile(file.path);
 
@@ -321,15 +335,6 @@ async function uploadAudioFile(file, folderName, req) {
     try {
         return await uploadToCloudinary(file, folderName, req);
     } catch (error) {
-        const message = String(error?.message || '');
-
-        if (
-            canUseLocalUploadFallback(req) &&
-            message.toLowerCase().includes('image file format')
-        ) {
-            return buildLocalUploadUrl(file, req);
-        }
-
         throw error;
     }
 }
