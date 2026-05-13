@@ -258,7 +258,7 @@ function getWordQualityScore(wordScore) {
   return toNumber(wordScore?.quality_score ?? wordScore?.word_score, 0);
 }
 
-function buildWordCounts(wordScoreList = [], goodMin = 90, averageMin = 60) {
+function buildWordCounts(wordScoreList = [], goodMin = 80, averageMin = 60) {
   let goodWords = 0;
   let averageWords = 0;
   let badWords = 0;
@@ -277,7 +277,7 @@ function buildWordCounts(wordScoreList = [], goodMin = 90, averageMin = 60) {
   return { goodWords, averageWords, badWords };
 }
 
-function normalizeTranscriptWords(wordScoreList = [], goodMin = 90, averageMin = 60) {
+function normalizeTranscriptWords(wordScoreList = [], goodMin = 80, averageMin = 60) {
   return wordScoreList
     .map((wordScore, index) => {
       const text = String(
@@ -311,15 +311,12 @@ function getScriptedAccuracyFromWordScores(wordScoreList = [], expectedWordCount
     return null;
   }
 
-  const averageQuality = average(qualityScores);
-  const reasonablyCorrectCount = qualityScores.filter((score) => score >= 55).length;
   const normalizedWordCount = Math.max(
     1,
     Number.isFinite(Number(expectedWordCount)) ? Number(expectedWordCount) : qualityScores.length
   );
-
-  const coverageAccuracy = (reasonablyCorrectCount / normalizedWordCount) * 100;
-  return clamp(Math.round(average([averageQuality, coverageAccuracy])), 0, 100);
+  const correctCount = qualityScores.filter((score) => score >= 80).length;
+  return clamp(Math.round((correctCount / normalizedWordCount) * 100), 0, 100);
 }
 
 function getFirstNumericValue(...values) {
@@ -359,7 +356,7 @@ function toFivePointTraitScore(rawScore) {
   return clamp(Math.round((numericRawScore / 100) * 5), 0, 5);
 }
 
-function mapScriptedSpeechResponse(fullResponse, expectedText, goodWordMin = 90) {
+function mapScriptedSpeechResponse(fullResponse, expectedText, goodWordMin = 80) {
   const textScore = fullResponse?.text_score || {};
   const pteScore = textScore?.pte_score || {};
   const fluencyMetrics = textScore?.fluency?.overall_metrics || {};
@@ -761,7 +758,7 @@ async function speakingevaluateRepeatSentenceResult({ userId, questionId, userFi
 
   await savePractice(userId, question);
 
-  const mappedResponse = mapScriptedSpeechResponse(finalResponse, expectedText, 85);
+  const mappedResponse = mapScriptedSpeechResponse(finalResponse, expectedText);
   const listeningScore = clamp(
     Math.round(toNumber(mappedResponse.readingScore, 0)),
     0,
