@@ -11,7 +11,7 @@ import { loadQuestionScoreHistory } from "@/lib/questionScoreHistory";
 
 const RECORD_SECONDS = 35;
 const DISPLAY_SCORE_MAX = 90;
-const GOOD_WORD_MIN = 90;
+const GOOD_WORD_MIN = 80;
 const AVERAGE_WORD_MIN = 60;
 const MIN_RECORDING_DURATION_SECONDS = 2;
 
@@ -95,11 +95,17 @@ function getTranscriptWordLevel(score) {
 function normalizeTranscriptWords(transcriptWords = [], transcript = "") {
   if (Array.isArray(transcriptWords) && transcriptWords.length) {
     return transcriptWords
-      .map((word, index) => ({
-        index,
-        text: String(word?.text || "").trim(),
-        level: word?.level || getTranscriptWordLevel(word?.score),
-      }))
+      .map((word, index) => {
+        const numericScore = Number(word?.score);
+
+        return {
+          index,
+          text: String(word?.text || word?.word || word?.token || word?.display || "").trim(),
+          level: Number.isFinite(numericScore)
+            ? getTranscriptWordLevel(numericScore)
+            : word?.level || "poor",
+        };
+      })
       .filter((word) => word.text);
   }
 

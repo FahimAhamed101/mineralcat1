@@ -10,6 +10,8 @@ import MicRecorder from "mic-recorder-to-mp3";
 
 const RECORD_SECONDS = 15;
 const DISPLAY_SCORE_MAX = 90;
+const GOOD_WORD_MIN = 80;
+const AVERAGE_WORD_MIN = 60;
 
 function ScoreGauge({ value, max = DISPLAY_SCORE_MAX, label, color = "#810000", footer = "" }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100));
@@ -64,12 +66,45 @@ function normalizeContentScore(value) {
   return numericValue <= 1 ? numericValue * 100 : numericValue;
 }
 
+function getTranscriptWordLevel(score) {
+  const numericScore = Number(score);
+  if (!Number.isFinite(numericScore)) return "poor";
+  if (numericScore >= GOOD_WORD_MIN) return "good";
+  if (numericScore >= AVERAGE_WORD_MIN) return "average";
+  return "poor";
+}
+
+function normalizeTranscriptWords(transcriptWords = [], transcript = "") {
+  if (Array.isArray(transcriptWords) && transcriptWords.length) {
+    return transcriptWords
+      .map((word, index) => {
+        const numericScore = Number(word?.score);
+
+        return {
+          index,
+          text: String(word?.text || word?.word || word?.token || word?.display || "").trim(),
+          level: Number.isFinite(numericScore)
+            ? getTranscriptWordLevel(numericScore)
+            : word?.level || "poor",
+        };
+      })
+      .filter((word) => word.text);
+  }
+
+  return String(transcript)
+    .split(/\s+/)
+    .map((text, index) => ({ index, text: text.trim(), level: "poor" }))
+    .filter((word) => word.text);
+}
+
 function getRepeatSentenceResultData(serverResponse) {
   const assessment = getQuestionAssessment(serverResponse, "repeat_sentence");
   const fluency = getAssessmentTrait(assessment, "fluency")?.score ?? 0;
   const pronunciation = getAssessmentTrait(assessment, "pronunciation")?.score ?? 0;
   const content = getAssessmentTrait(assessment, "content")?.score ?? 0;
   const normalizedContent = normalizeContentScore(content);
+  const predictedText = getAssessmentMeta(assessment, "predictedText", "");
+  const transcript = getAssessmentMeta(assessment, "transcript", predictedText);
 
   return {
     speakingScore: (Number(fluency) + Number(pronunciation)) / 2,
@@ -81,7 +116,12 @@ function getRepeatSentenceResultData(serverResponse) {
     goodWords: getAssessmentMeta(assessment, "goodWords", 0),
     averageWords: getAssessmentMeta(assessment, "averageWords", 0),
     badWords: getAssessmentMeta(assessment, "badWords", 0),
-    predictedText: getAssessmentMeta(assessment, "predictedText", ""),
+    predictedText,
+    transcript,
+    transcriptWords: normalizeTranscriptWords(
+      getAssessmentMeta(assessment, "transcriptWords", []),
+      transcript || predictedText
+    ),
   };
 }
 
@@ -194,14 +234,34 @@ function ResultModal({ isOpen, onClose, serverResponse }) {
             </div>
           </div>
 
-          {scoreData.predictedText ? (
-            <div className="rounded-xl border border-[#d7ece0] bg-[#fbfffc] p-4">
-              <p className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">
-                Transcript
-              </p>
-              <p className="text-[15px] leading-7 text-gray-800 whitespace-pre-line">
-                {scoreData.predictedText}
-              </p>
+          {scoreData.transcriptWords.length ? (
+            <div>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-sm font-bold text-gray-700 uppercase tracking-wide">
+                  Transcript Analysis
+                </p>
+                <div className="flex items-center gap-3 text-[11px] font-semibold">
+                  <span className="text-green-600">Good</span>
+                  <span className="text-amber-500">Average</span>
+                  <span className="text-red-500">Poor</span>
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#d7ece0] bg-[#fbfffc] p-4 text-[15px] leading-8">
+                {scoreData.transcriptWords.map((word) => {
+                  const textColor =
+                    word.level === "good"
+                      ? "text-green-600"
+                      : word.level === "average"
+                        ? "text-amber-500"
+                        : "text-red-500";
+
+                  return (
+                    <span key={`${word.index}-${word.text}`} className={`${textColor} font-medium`}>
+                      {word.text}{" "}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
 

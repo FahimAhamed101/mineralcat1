@@ -118,6 +118,9 @@ function buildLegacyAssessment(serverResponse = {}, subtype = "") {
           averageWords: toNumber(source.averageWords, 0),
           badWords: toNumber(source.badWords, 0),
           predictedText: source.predictedText || "",
+          transcript: source.transcript || source.predictedText || "",
+          transcriptWords: Array.isArray(source.transcriptWords) ? source.transcriptWords : [],
+          noSpeechDetected: Boolean(source.noSpeechDetected),
         },
       });
     }
