@@ -36,7 +36,7 @@ const INTERNAL_REQUEST_KEY =
 const subtypeApiUrls = {
     read_aloud: `${process.env.BACKENDURL}/test/speaking/read_aloud/result`,
     repeat_sentence: `${process.env.BACKENDURL}/test/speaking/repeat_sentence/result`,
-    describe_image: `${process.env.BACKENDURL}/result/describe_image`,
+    describe_image: `${process.env.BACKENDURL}/test/speaking/describe_image/result`,
     respond_to_situation: `${process.env.BACKENDURL}/test/speaking/respond-to-a-situation/result`,
     answer_short_question: `${process.env.BACKENDURL}/test/speaking/answer_short_question/result`,
 

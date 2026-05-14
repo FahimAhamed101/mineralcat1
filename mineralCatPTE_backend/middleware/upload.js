@@ -13,6 +13,9 @@ const MIME_TYPE_EXTENSION_MAP = {
     'audio/mp4': '.m4a',
     'audio/x-m4a': '.m4a',
     'video/webm': '.webm',
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
 };
 
 const storage = multer.diskStorage({

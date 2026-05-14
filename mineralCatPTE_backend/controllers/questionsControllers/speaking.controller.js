@@ -3,10 +3,12 @@ const ExpressError = require("../../utils/ExpressError");
 const {
     readAloudSchemaValidator,
     repeatSentenceSchemaValidator,
+    describeImageSchemaValidator,
     respondToASituationSchemaValidator,
     answerShortQuestionSchemaValidator,
     editreadAloudSchemaValidator,
     editrepeatSentenceSchemaValidator,
+    editDescribeImageSchemaValidator,
     editrespondToASituationSchemaValidator,
     editanswerShortQuestionSchemaValidator
 } = require("../../validations/schemaValidations");
@@ -18,6 +20,7 @@ const practicedModel = require("../../models/practiced.model");
 const { getQuestionByQuery } = require("../../common/getQuestionFunction");
 const {
     buildAnswerShortQuestionAssessment,
+    buildDescribeImageAssessment,
     buildRepeatSentenceAssessment,
 } = require("../../common/questionAssessment");
 const { scoreOpenEndedSpeech } = require("../../services/speechace.service");
@@ -280,6 +283,27 @@ function buildSpeechAceAnswerShortQuestionResult({
     });
 }
 
+function buildEmptyDescribeImageResponse() {
+    return {
+        speakingScore: 0,
+        taskScore: 0,
+        readingScore: 0,
+        content: 0,
+        appropriacy: 0,
+        fluency: 0,
+        pronunciation: 0,
+        totalTraitScore: 0,
+        traitScaleMax: 5,
+        predictedText: "",
+        relevanceClass: null,
+        totalWords: 0,
+        goodWords: 0,
+        averageWords: 0,
+        badWords: 0,
+        noSpeechDetected: true,
+    };
+}
+
 async function uploadToCloudinary(file, folderName, req) {
     if (!file) {
         throw new ExpressError(400, "Please upload a file");
@@ -350,6 +374,55 @@ async function uploadAudioFile(file, folderName, req) {
         return await uploadToCloudinary(file, folderName, req);
     } catch (error) {
         throw error;
+    }
+}
+
+async function uploadImageFile(file, folderName, req) {
+    if (!file) {
+        throw new ExpressError(400, "Please upload an image");
+    }
+
+    if (!file.path) {
+        throw new ExpressError(400, "Uploaded image path is missing");
+    }
+
+    if (!hasCloudinaryCredentials()) {
+        return buildLocalUploadUrl(file, req);
+    }
+
+    const uploadOptions = {
+        resource_type: "image",
+        folder: `speaking_test/${folderName}`,
+        public_id: getAudioUploadPublicId(file),
+        type: "upload",
+        use_filename: false,
+        unique_filename: false,
+        overwrite: false,
+    };
+
+    try {
+        const result = await cloudinary.uploader.upload(file.path, uploadOptions);
+
+        if (!result?.secure_url) {
+            throw new Error("Cloudinary upload did not return an image URL");
+        }
+
+        await safeDeleteFile(file.path);
+        return result.secure_url;
+    } catch (error) {
+        console.error("Cloudinary image upload failed:", error);
+
+        if (canUseLocalUploadFallback(req)) {
+            console.warn("Using local image upload fallback after Cloudinary upload error");
+            return buildLocalUploadUrl(file, req);
+        }
+
+        await safeDeleteFile(file.path);
+
+        throw new ExpressError(
+            502,
+            `Image upload failed: ${error?.message || "Cloudinary upload failed"}`
+        );
     }
 }
 
@@ -628,6 +701,157 @@ module.exports.repeatSentenceResult = asyncWrapper(async (req, res) => {
 //         throw error;
 //     }
 // });
+
+// ============================================================
+// DESCRIBE IMAGE FUNCTIONS
+// ============================================================
+
+module.exports.addDescribeImage = asyncWrapper(async (req, res) => {
+    const newData = req.body;
+
+    if (!newData) {
+        throw new ExpressError(400, "New data is required");
+    }
+
+    if (newData.type != 'speaking' || newData.subtype != 'describe_image') {
+        throw new ExpressError(400, "question type or subtype is not valid!");
+    }
+
+    if (!req.file) {
+        throw new ExpressError(400, "Image is required");
+    }
+
+    const { type = 'speaking', subtype = 'describe_image', heading, prompt = "" } = newData;
+    const { error, value } = describeImageSchemaValidator.validate({
+        type,
+        subtype,
+        heading,
+        prompt,
+    });
+
+    if (error) throw new ExpressError(400, error.details[0].message);
+
+    const imageUrl = await uploadImageFile(req.file, 'describeImage', req);
+    const newQuestion = await questionsModel.create({
+        ...value,
+        imageUrl,
+        createdBy: req.user._id,
+    });
+
+    return res.status(200).json({
+        message: "Question added successfully",
+        question: newQuestion,
+    });
+});
+
+module.exports.editDescribeImage = asyncWrapper(async (req, res) => {
+    const newData = req.body;
+
+    if (!newData) {
+        throw new ExpressError(400, "New data is required");
+    }
+
+    if ((newData.type && newData.type != 'speaking') || (newData.subtype && newData.subtype != 'describe_image')) {
+        throw new ExpressError(400, "question type or subtype is not valid!");
+    }
+
+    const { questionId, ...data } = newData;
+    data.type = 'speaking';
+    data.subtype = 'describe_image';
+
+    const { error, value } = editDescribeImageSchemaValidator.validate(data);
+
+    if (error) throw new ExpressError(400, error.details[0].message);
+    if (!questionId) throw new ExpressError(400, "Question ID is required");
+
+    const updateData = {
+        ...value,
+        createdBy: req.user._id,
+    };
+
+    if (req.file) {
+        updateData.imageUrl = await uploadImageFile(req.file, 'describeImage', req);
+    }
+
+    const question = await questionsModel.findByIdAndUpdate(
+        questionId,
+        updateData,
+        { new: true }
+    );
+
+    if (!question) throw new ExpressError(404, 'Question not found');
+
+    return res.status(200).json({
+        message: "Question updated successfully",
+        question,
+    });
+});
+
+module.exports.getAllDescribeImage = asyncWrapper(async (req, res) => {
+    let query = req.query.query;
+    if (!query) query = 'all';
+    const { page, limit } = req.query;
+
+    getQuestionByQuery(query, 'describe_image', page, limit, req, res);
+});
+
+module.exports.describeImageResult = asyncWrapper(async (req, res) => {
+    const { questionId, accent = 'us' } = req.body;
+    let userFilePath = req.file?.path;
+
+    try {
+        if (!questionId) throw new ExpressError(400, "questionId is required!");
+        if (!req.file) throw new ExpressError(400, "voice is required!");
+
+        const question = await questionsModel.findById(questionId);
+        if (!question) throw new ExpressError(404, "Question Not Found!");
+        if (question.subtype !== 'describe_image') {
+            throw new ExpressError(401, "this is not valid questionType for this route!");
+        }
+
+        let responseData;
+
+        try {
+            const speechResponse = await scoreOpenEndedSpeech({
+                audioFilePath: userFilePath,
+                relevanceContext: question.prompt || question.heading || "Describe the image in detail.",
+                accent,
+            });
+            responseData = mapOpenEndedSpeechResponse(speechResponse);
+        } catch (error) {
+            if (!isNoSpeechDetectedError(error)) {
+                throw error;
+            }
+
+            responseData = buildEmptyDescribeImageResponse();
+        }
+
+        await safeDeleteFile(userFilePath);
+        userFilePath = null;
+
+        await practicedModel.findOneAndUpdate(
+            {
+                user: req.user._id,
+                questionType: question.type,
+                subtype: question.subtype
+            },
+            {
+                $addToSet: { practicedQuestions: question._id }
+            },
+            { upsert: true, new: true }
+        );
+
+        return res.status(200).json({
+            success: true,
+            data: responseData,
+            assessment: buildDescribeImageAssessment(responseData),
+            ...responseData,
+        });
+    } catch (error) {
+        await safeDeleteFile(userFilePath);
+        throw error;
+    }
+});
 
 // ============================================================
 // RESPOND TO SITUATION FUNCTIONS

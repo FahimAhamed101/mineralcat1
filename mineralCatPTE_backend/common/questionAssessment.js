@@ -189,6 +189,39 @@ function buildRespondToSituationAssessment(data = {}) {
   });
 }
 
+function buildDescribeImageAssessment(data = {}) {
+  const speakingScore = toNumber(data.speakingScore, 0);
+
+  return buildAssessment({
+    questionType: "speaking",
+    subtype: "describe_image",
+    title: "Describe Image",
+    score: toNumber(data.taskScore, speakingScore),
+    maxScore: 100,
+    skills: [
+      buildMetric({ key: "speaking", label: "Speaking", score: speakingScore, maxScore: 100, format: "percent" }),
+    ],
+    traits: [
+      buildMetric({ key: "content", label: "Content", score: toNumber(data.content, data.appropriacy || 0), maxScore: toNumber(data.traitScaleMax, 5) || 5 }),
+      buildMetric({ key: "pronunciation", label: "Pronunciation", score: toNumber(data.pronunciation, 0), maxScore: toNumber(data.traitScaleMax, 5) || 5 }),
+      buildMetric({ key: "fluency", label: "Fluency", score: toNumber(data.fluency, 0), maxScore: toNumber(data.traitScaleMax, 5) || 5 }),
+    ],
+    meta: {
+      taskScore: toNumber(data.taskScore, 0),
+      totalTraitScore: toNumber(data.totalTraitScore, 0),
+      traitScaleMax: toNumber(data.traitScaleMax, 5) || 5,
+      totalWords: toNumber(data.totalWords, 0),
+      goodWords: toNumber(data.goodWords, 0),
+      averageWords: toNumber(data.averageWords, 0),
+      badWords: toNumber(data.badWords, 0),
+      predictedText: data.predictedText || "",
+      relevanceClass: data.relevanceClass || null,
+      noSpeechDetected: Boolean(data.noSpeechDetected),
+      usedFallbackScoring: Boolean(data.usedFallbackScoring),
+    },
+  });
+}
+
 function buildAnswerShortQuestionAssessment(payload = {}) {
   const data = payload.data || {};
   const result = payload.result || {};
@@ -347,6 +380,7 @@ function buildObjectiveAssessment({
 
 module.exports = {
   buildAnswerShortQuestionAssessment,
+  buildDescribeImageAssessment,
   buildObjectiveAssessment,
   buildReadAloudAssessment,
   buildRepeatSentenceAssessment,

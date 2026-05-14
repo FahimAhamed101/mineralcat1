@@ -296,6 +296,23 @@ module.exports.editrepeatSentenceSchemaValidator = Joi.object(
     }
 )
 
+module.exports.describeImageSchemaValidator = Joi.object(
+    {
+        type: Joi.string().required(),
+        subtype: Joi.string().required(),
+        heading: Joi.string().required(),
+        prompt: Joi.string().allow("").optional(),
+    }
+)
+module.exports.editDescribeImageSchemaValidator = Joi.object(
+    {
+        type: Joi.string().optional(),
+        subtype: Joi.string().optional(),
+        heading: Joi.string().optional(),
+        prompt: Joi.string().allow("").optional(),
+    }
+)
+
 
 module.exports.respondToASituationSchemaValidator = Joi.object(
     {

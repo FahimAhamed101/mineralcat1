@@ -1,4 +1,4 @@
-const { addReadAloud, getAllReadAloud, editReadAloud, addRepeatSentence, editRepeatSentence, getAllRepeatSentence, addRespondToASituation, editRespondToASituation, getAllRespondToASituation, addAnswerShortQuestion, editAnswerShortQuestion, getAllAnswerShortQuestion, readAloudResult, respondToASituationResult, repeatSentenceResult, answerShortQuestionResult } = require('../../controllers/questionsControllers/speaking.controller');
+const { addReadAloud, getAllReadAloud, editReadAloud, addRepeatSentence, editRepeatSentence, getAllRepeatSentence, addDescribeImage, editDescribeImage, getAllDescribeImage, addRespondToASituation, editRespondToASituation, getAllRespondToASituation, addAnswerShortQuestion, editAnswerShortQuestion, getAllAnswerShortQuestion, readAloudResult, describeImageResult, respondToASituationResult, repeatSentenceResult, answerShortQuestionResult } = require('../../controllers/questionsControllers/speaking.controller');
 const { checkLimit } = require('../../middleware/checkLimit');
 const { isUserLoggedIn, isAdminUser } = require('../../middleware/middlewares');
 const createUploadMiddleware = require('../../middleware/upload');
@@ -6,6 +6,7 @@ const createUploadMiddleware = require('../../middleware/upload');
 
 const router = require('express').Router();
 const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.webm', '.ogg', '.m4a'];
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
 
 
 router.route('/read_aloud')
@@ -23,6 +24,13 @@ router.route('/repeat_sentence')
 
 
 router.post('/repeat_sentence/result', isUserLoggedIn, createUploadMiddleware(AUDIO_EXTENSIONS).single('voice'),checkLimit(['aicredits']),repeatSentenceResult);
+
+router.route('/describe_image')
+    .get(isUserLoggedIn, getAllDescribeImage)
+    .put(isUserLoggedIn, isAdminUser, createUploadMiddleware(IMAGE_EXTENSIONS).single('image'), editDescribeImage)
+    .post(isUserLoggedIn, isAdminUser, createUploadMiddleware(IMAGE_EXTENSIONS).single('image'), addDescribeImage);
+
+router.post('/describe_image/result', isUserLoggedIn, createUploadMiddleware(AUDIO_EXTENSIONS).single('voice'), checkLimit(['aicredits']), describeImageResult);
 
 router.route('/respond-to-a-situation')
     .get(isUserLoggedIn ,getAllRespondToASituation)
