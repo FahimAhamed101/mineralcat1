@@ -61,7 +61,7 @@ import AddSectionalReading from './../pages/dashboard/mock_test/sessional-mock/R
 import ListeningMockTest from './../pages/dashboard/mock_test/sessional-mock/Listening/ListeningMock';
 import AddSectionalListening from './../pages/dashboard/mock_test/sessional-mock/Listening/AddSectionalListening';
 import Privecy from "../pages/dashboard/Terms & Service/Privecy";
-
+import DescribeImage from "../pages/dashboard/questions/describeimage/DescribeImage";
 import EditPrivacy from "../pages/dashboard/JodiEditor/EditPrivacy";
 import EditUser from './../pages/dashboard/users/EditUser';
 import Templates from "../pages/dashboard/templates/Templates";
@@ -111,6 +111,14 @@ const router = createBrowserRouter([
         element: (
           <Admin>
             <ReadAloud />
+          </Admin>
+        ),
+      },
+       {
+        path: "/question/describe-image",
+        element: (
+          <Admin>
+            <DescribeImage />
           </Admin>
         ),
       },

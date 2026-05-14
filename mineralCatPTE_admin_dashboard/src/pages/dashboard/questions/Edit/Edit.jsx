@@ -6,6 +6,7 @@ import Swal from "sweetalert2";
 import { toast } from "react-toastify";
 import { useLocation, useNavigate, useParams } from "react-router";
 import AudioInput from "../audio/AudioInput";
+import ImageInput from "../image/ImageInput";
 
 async function getResponseErrorMessage(response) {
   try {
@@ -20,6 +21,7 @@ export default function Edit() {
   const [heading, setHeading] = useState("");
   const [questionText, setQuestionText] = useState("");
   const [audio, setAudio] = useState("");
+  const [image, setImage] = useState("");
   const [loading, setLoading] = useState(false);
   const [showTextarea, setShowTextArea] = useState(true);
   const [showInput, setShowInput] = useState(false);
@@ -33,15 +35,20 @@ export default function Edit() {
   const isRepeatSentence = api === "/test/speaking/repeat_sentence";
   const isAnswerShortQuestion = api === "/test/speaking/answer_short_question";
   const isRespondToSituation = api === "/test/speaking/respond-to-a-situation";
+  const isDescribeImage = api === "/test/speaking/describe_image";
   const textFieldLabel = isRepeatSentence
     ? "Expected Transcript (optional)"
     : isAnswerShortQuestion
       ? "Accepted Answers"
+      : isDescribeImage
+      ? "Prompt (optional)"
       : "Question Text";
   const textFieldPlaceholder = isAnswerShortQuestion
     ? "Enter accepted answers. Use one per line or separate with |"
     : isRepeatSentence
     ? "Leave blank to generate with SpeechAce"
+    : isDescribeImage
+    ? "Add optional image description or scoring context"
     : "Enter body";
   const navigate = useNavigate();
 
@@ -52,17 +59,21 @@ export default function Edit() {
     } else if (isAnswerShortQuestion || isRespondToSituation) {
       setShowTextArea(true);
       setShowInput(true);
+    } else if (isDescribeImage) {
+      setShowTextArea(true);
+      setShowInput(false);
     } else {
       setShowTextArea(true);
       setShowInput(false);
     }
-  }, [isAnswerShortQuestion, isRepeatSentence, isRespondToSituation]);
+  }, [isAnswerShortQuestion, isDescribeImage, isRepeatSentence, isRespondToSituation]);
 
   useEffect(() => {
     if (!initialQuestion) return;
 
     setHeading(initialQuestion.heading || "");
     setAudio(initialQuestion.audioUrl || "");
+    setImage(initialQuestion.imageUrl || "");
 
     if (isAnswerShortQuestion) {
       setQuestionText(initialQuestion.correctText || "");
@@ -88,6 +99,47 @@ export default function Edit() {
     }
 
     const hasNewAudioFile = typeof File !== "undefined" && audio instanceof File;
+    const hasNewImageFile = typeof File !== "undefined" && image instanceof File;
+
+    if (isDescribeImage && !image) {
+      toast.error("Please upload an image before updating.");
+      setLoading(false);
+      return;
+    }
+
+    if (isDescribeImage && hasNewImageFile) {
+      const formData = new FormData();
+      formData.append("heading", heading);
+      formData.append("questionId", uniquePart);
+      formData.append("prompt", questionText.trim());
+      formData.append("image", image);
+
+      fetchWithAuth(`${baseUrl}${api}`, {
+        method: "PUT",
+        body: formData,
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(await getResponseErrorMessage(response));
+          }
+          return response.json();
+        })
+        .then(() => {
+          Swal.fire({
+            title: "Success",
+            text: "Question updated successfully!",
+            icon: "success",
+            confirmButtonText: "OK",
+          });
+          window.location.href = from;
+        })
+        .catch((error) => {
+          console.error("Error updating question:", error);
+          toast.error(error?.message || "Error updating the question.");
+        })
+        .finally(() => setLoading(false));
+      return;
+    }
 
     if (showInput && hasNewAudioFile) {
       const formData = new FormData();
@@ -146,6 +198,8 @@ export default function Edit() {
           ? questionText.trim()
             ? { audioConvertedText: questionText.trim() }
             : {}
+          : isDescribeImage
+          ? { prompt: questionText.trim() }
           : { prompt: questionText }),
       }),
     })
@@ -224,6 +278,8 @@ export default function Edit() {
         )}
 
         {showInput && <AudioInput audio={audio} setAudio={setAudio} />}
+
+        {isDescribeImage && <ImageInput image={image} setImage={setImage} />}
 
         {/* Update Button */}
         <div className="flex justify-center">

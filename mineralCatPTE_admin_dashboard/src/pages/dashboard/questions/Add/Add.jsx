@@ -6,6 +6,7 @@ import Swal from "sweetalert2";
 import { toast } from "react-toastify";
 import { useLocation, useNavigate } from "react-router";
 import AudioInput from "../audio/AudioInput";
+import ImageInput from "../image/ImageInput";
 
 async function getResponseErrorMessage(response) {
   try {
@@ -20,6 +21,7 @@ export default function Add() {
   const [heading, setHeading] = useState("");
   const [questionText, setQuestionText] = useState("");
   const [audio, setAudio] = useState("");
+  const [image, setImage] = useState("");
   const [loading, setLoading] = useState(false);
   const [showTextarea, setShowTextArea] = useState(true);
   const [showInput, setShowInput] = useState(false);
@@ -30,15 +32,20 @@ export default function Add() {
   const isRepeatSentence = api === "/test/speaking/repeat_sentence";
   const isAnswerShortQuestion = api === "/test/speaking/answer_short_question";
   const isRespondToSituation = api === "/test/speaking/respond-to-a-situation";
+  const isDescribeImage = api === "/test/speaking/describe_image";
   const textFieldLabel = isRepeatSentence
     ? "Expected Transcript (optional)"
     : isAnswerShortQuestion
       ? "Accepted Answers"
+      : isDescribeImage
+      ? "Prompt (optional)"
       : "Question Text";
   const textFieldPlaceholder = isAnswerShortQuestion
     ? "Enter accepted answers. Use one per line or separate with |"
     : isRepeatSentence
     ? "Leave blank to generate with SpeechAce"
+    : isDescribeImage
+    ? "Add optional image description or scoring context"
     : "Enter body";
 
   const navigate = useNavigate();
@@ -50,11 +57,14 @@ export default function Add() {
     } else if (isAnswerShortQuestion || isRespondToSituation) {
       setShowTextArea(true);
       setShowInput(true);
+    } else if (isDescribeImage) {
+      setShowTextArea(true);
+      setShowInput(false);
     } else {
       setShowTextArea(true);
       setShowInput(false);
     }
-  }, [isAnswerShortQuestion, isRepeatSentence, isRespondToSituation]);
+  }, [isAnswerShortQuestion, isDescribeImage, isRepeatSentence, isRespondToSituation]);
 
   const handleUpdate = () => {
     setLoading(true);
@@ -73,6 +83,49 @@ export default function Add() {
     if (isAnswerShortQuestion && !questionText.trim()) {
       toast.error("Please add the accepted answers list.");
       setLoading(false);
+      return;
+    }
+
+    if (isDescribeImage && !image) {
+      toast.error("Please upload an image before adding.");
+      setLoading(false);
+      return;
+    }
+
+    if (isDescribeImage) {
+      const formData = new FormData();
+      formData.append("heading", heading);
+      if (questionText.trim()) {
+        formData.append("prompt", questionText.trim());
+      }
+      formData.append("image", image);
+      formData.append("type", location.state?.type || "");
+      formData.append("subtype", location.state?.subtype || "");
+
+      fetchWithAuth(`${baseUrl}${api}`, {
+        method: "POST",
+        body: formData,
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(await getResponseErrorMessage(response));
+          }
+          return response.json();
+        })
+        .then(() => {
+          Swal.fire({
+            title: "Success",
+            text: "Question updated successfully!",
+            icon: "success",
+            confirmButtonText: "OK",
+          });
+          window.location.href = from;
+        })
+        .catch((error) => {
+          console.error("Error updating question:", error);
+          toast.error(error?.message || "Error updating the question.");
+        })
+        .finally(() => setLoading(false));
       return;
     }
 
@@ -208,6 +261,8 @@ export default function Add() {
         )}
 
         {showInput && <AudioInput audio={audio} setAudio={setAudio} />}
+
+        {isDescribeImage && <ImageInput image={image} setImage={setImage} />}
 
         {/* Update Button */}
         <div className="flex justify-center">

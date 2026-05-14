@@ -12,6 +12,7 @@ const questionCategories = [
       { id: "repeat-sentence", title: "Repeat Sentence", icon: "🗣️", url: "/question/repeat-sentence" },
       { id: "respond-situation", title: "Respond to a Situation", icon: "🗣️", url: "/question/response-situtation" },
       { id: "answer-short", title: "Answer Short Question", icon: "🗣️", url: "/question/short-questions" },
+      { id: "describe-image", title: "Describe the Image", icon: "🗣️", url: "/question/describe-image" }
     ],
   },
   {
