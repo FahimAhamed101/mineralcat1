@@ -16,7 +16,7 @@ export default function LanguageSkills({ isOpen, setIsOpen }) {
       borderColor: "border-orange-400",
       textColor: "text-orange-600",
       icon: FaMicrophone,
-      tasks: ["Read Aloud", "Repeat Sentence", "Respond to a Situation", "Answer Short Question"],
+      tasks: ["Read Aloud", "Repeat Sentence", "Respond to a Situation", "Answer Short Question", "Describe Image"],
     },
     {
       title: "Writing",

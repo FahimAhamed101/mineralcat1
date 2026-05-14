@@ -149,6 +149,32 @@ function buildLegacyAssessment(serverResponse = {}, subtype = "") {
       });
     }
 
+    case "describe_image": {
+      return buildAssessment({
+        score: toNumber(data.taskScore, toNumber(data.speakingScore, 0)),
+        maxScore: 100,
+        skills: [
+          createMetric("speaking", "Speaking", toNumber(data.speakingScore, 0), 100),
+        ],
+        traits: [
+          createMetric("content", "Content", toNumber(data.content, data.appropriacy || 0), toNumber(data.traitScaleMax, 5) || 5),
+          createMetric("pronunciation", "Pronunciation", toNumber(data.pronunciation, 0), toNumber(data.traitScaleMax, 5) || 5),
+          createMetric("fluency", "Fluency", toNumber(data.fluency, 0), toNumber(data.traitScaleMax, 5) || 5),
+        ],
+        meta: {
+          taskScore: toNumber(data.taskScore, 0),
+          totalTraitScore: toNumber(data.totalTraitScore, 0),
+          traitScaleMax: toNumber(data.traitScaleMax, 5) || 5,
+          totalWords: toNumber(data.totalWords, 0),
+          goodWords: toNumber(data.goodWords, 0),
+          averageWords: toNumber(data.averageWords, 0),
+          badWords: toNumber(data.badWords, 0),
+          predictedText: data.predictedText || "",
+          relevanceClass: data.relevanceClass || null,
+        },
+      });
+    }
+
     case "answer_short_question": {
       const speakingRaw = toNumber(data.speakingScore, toNumber(result.Speaking, 0)) || 0;
       const listeningRaw = toNumber(data.listeningScore, toNumber(result.Listening, 0)) || 0;

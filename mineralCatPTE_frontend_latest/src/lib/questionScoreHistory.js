@@ -9,6 +9,7 @@ const MAX_HISTORY_ITEMS = 5;
 const RESULT_ROUTE_TO_SUBTYPE = {
   "/test/speaking/read_aloud/result": "read_aloud",
   "/test/speaking/repeat_sentence/result": "repeat_sentence",
+  "/test/speaking/describe_image/result": "describe_image",
   "/test/speaking/respond-to-a-situation/result": "respond_to_situation",
   "/test/speaking/answer_short_question/result": "answer_short_question",
   "/test/reading/fill-in-the-blanks/result": "reading_fill_in_the_blanks",
@@ -29,6 +30,7 @@ const RESULT_ROUTE_TO_SUBTYPE = {
 const QUESTION_ROUTE_TO_SUBTYPE = {
   "speaking/read-aloud": "read_aloud",
   "speaking/repeat-sentence": "repeat_sentence",
+  "speaking/describe-image": "describe_image",
   "speaking/respond-to-a-situation": "respond_to_situation",
   "speaking/answer-short-question": "answer_short_question",
   "reading/fill-in-the-blanks": "reading_fill_in_the_blanks",

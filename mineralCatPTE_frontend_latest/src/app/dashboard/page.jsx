@@ -169,6 +169,20 @@ const ProgressDemo = () => {
                             <Progress value={parseInt((data?.typeCounts?.speaking?.repeat_sentence?.completed / data?.typeCounts?.speaking?.repeat_sentence?.total) * 100, 10)} color="amber" />
 
                           </div>
+                          <div className="lower">
+                            <p className="flex justify-between">
+                              Describe Image{" "}
+                              <span>
+                                {
+                                  data?.typeCounts?.speaking?.describe_image
+                                    ?.completed
+                                }
+                                /{data?.typeCounts?.speaking?.describe_image?.total}
+                              </span>
+                            </p>
+                            <Progress value={parseInt((data?.typeCounts?.speaking?.describe_image?.completed / data?.typeCounts?.speaking?.describe_image?.total) * 100, 10)} color="amber" />
+
+                          </div>
                         </div>
                         <div className="right w-full flex flex-col gap-2 md:gap-5">
                           <div className="upper">
