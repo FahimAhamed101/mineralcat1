@@ -124,7 +124,55 @@ async function scoreOpenEndedSpeech({ audioFilePath, relevanceContext, accent = 
   }
 }
 
+async function scoreTaskGeneral({
+  audioFilePath,
+  taskContext,
+  taskQuestion = 'Respond to Situation',
+  accent = 'us',
+}) {
+  if (!audioFilePath) throw new ExpressError(400, 'Audio file path is required');
+
+  const normalizedTaskContext = String(taskContext || '').trim();
+  if (!normalizedTaskContext) {
+    throw new ExpressError(400, 'Task context is required');
+  }
+
+  const form = new FormData();
+  form.append('task_context', normalizedTaskContext);
+  form.append('task_question', String(taskQuestion || 'Respond to Situation').trim());
+  form.append('user_audio_file', fs.createReadStream(audioFilePath), {
+    filename: path.basename(audioFilePath),
+    contentType: getAudioMimeType(audioFilePath),
+  });
+
+  const requestUrl =
+    `${SPEECHACE_BASE_URL}/api/scoring/task/v9/json` +
+    `?key=${getSpeechAceApiKey()}` +
+    '&task_type=general' +
+    `&dialect=${encodeURIComponent(getDialectFromAccent(accent))}`;
+
+  try {
+    const response = await axios.post(requestUrl, form, {
+      headers: form.getHeaders(),
+      maxBodyLength: Infinity,
+    });
+
+    if (response.data?.status && response.data.status !== 'success') {
+      throw new ExpressError(500, JSON.stringify(response.data));
+    }
+
+    return response.data;
+  } catch (error) {
+    const errorMessage = error.response?.data
+      ? JSON.stringify(error.response.data)
+      : error.message;
+
+    throw new ExpressError(500, mapSpeechAceErrorMessage('SpeechAce task scoring failed', errorMessage));
+  }
+}
+
 module.exports = {
   scoreScriptedSpeech,
   scoreOpenEndedSpeech,
+  scoreTaskGeneral,
 };

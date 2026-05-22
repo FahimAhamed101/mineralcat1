@@ -10,6 +10,7 @@ const {
 const {
   scoreScriptedSpeech,
   scoreOpenEndedSpeech,
+  scoreTaskGeneral,
 } = require('../../../services/speechace.service');
 
 function normalizeIndexedBlankAnswers(answer) {
@@ -538,14 +539,15 @@ function hasMeaningfulSpeechTranscript(transcript = '') {
   return joinedMeaningfulTranscript.length >= 8;
 }
 
-function mapOpenEndedSpeechResponse(fullResponse) {
+function mapOpenEndedSpeechResponse(fullResponse, taskResponse = null) {
   const speechScore = fullResponse?.speech_score || {};
   const pteScore = speechScore?.pte_score || {};
+  const taskScoreData = taskResponse?.task_score || fullResponse?.task_score || {};
   const wordScoreList = Array.isArray(speechScore?.word_score_list)
     ? speechScore.word_score_list
     : [];
   const relevanceClass = speechScore?.relevance?.class;
-  const predictedText = String(speechScore?.transcript || '').trim();
+  const predictedText = String(speechScore?.transcript || taskScoreData?.transcript || '').trim();
   const hasTranscript = predictedText.length > 0 || wordScoreList.length > 0;
 
   const pronunciation = hasTranscript
@@ -570,35 +572,38 @@ function mapOpenEndedSpeechResponse(fullResponse) {
 
   let appropriacy = 0;
   if (hasTranscript) {
-    const numericAppropriacy = getFirstNumericValue(
-      speechScore?.relevance?.score,
-      speechScore?.relevance?.overall_score,
-      speechScore?.relevance?.relevance_score,
-      speechScore?.relevance?.band,
-      speechScore?.relevance?.band_score,
-      speechScore?.ielts_feedback?.task_response?.score,
-      speechScore?.ielts_feedback?.task_response?.band,
-      pteScore.coherence
-    );
+    const taskAchievementScore = getFirstNumericValue(taskScoreData?.score);
 
-    if (numericAppropriacy !== null) {
-      appropriacy = toFivePointTraitScore(numericAppropriacy) ?? 0;
+    if (taskAchievementScore !== null) {
+      appropriacy = clamp(taskAchievementScore, 0, 5);
     } else {
-      const normalizedRelevanceClass = String(relevanceClass || '')
-        .trim()
-        .toUpperCase();
+      const numericAppropriacy = getFirstNumericValue(
+        speechScore?.relevance?.score,
+        speechScore?.relevance?.overall_score,
+        speechScore?.relevance?.relevance_score,
+        speechScore?.relevance?.band,
+        speechScore?.relevance?.band_score,
+        speechScore?.ielts_feedback?.task_response?.score,
+        speechScore?.ielts_feedback?.task_response?.band
+      );
 
-      if (normalizedRelevanceClass === 'TRUE') {
-        appropriacy = 5;
-      } else if (
-        normalizedRelevanceClass === 'PARTIAL' ||
-        normalizedRelevanceClass === 'PARTIALLY_RELEVANT'
-      ) {
-        appropriacy = 3;
-      } else if (normalizedRelevanceClass === 'FALSE') {
-        appropriacy = 0;
+      if (numericAppropriacy !== null) {
+        appropriacy = toFivePointTraitScore(numericAppropriacy) ?? 0;
       } else {
-        appropriacy = toFivePointTraitScore(pteScore.coherence) ?? 0;
+        const normalizedRelevanceClass = String(relevanceClass || '')
+          .trim()
+          .toUpperCase();
+
+        if (normalizedRelevanceClass === 'TRUE') {
+          appropriacy = 5;
+        } else if (
+          normalizedRelevanceClass === 'PARTIAL' ||
+          normalizedRelevanceClass === 'PARTIALLY_RELEVANT'
+        ) {
+          appropriacy = 3;
+        } else if (normalizedRelevanceClass === 'FALSE') {
+          appropriacy = 0;
+        }
       }
     }
   }
@@ -672,7 +677,13 @@ async function handleSpeechAssessment(req, res, expectedSubtype) {
           relevanceContext: question.audioConvertedText || question.prompt,
           accent,
         });
-        responseData = mapOpenEndedSpeechResponse(fullResponse);
+        const taskResponse = await scoreTaskGeneral({
+          audioFilePath: userFilePath,
+          taskContext: question.audioConvertedText || question.prompt,
+          taskQuestion: 'Respond to Situation',
+          accent,
+        });
+        responseData = mapOpenEndedSpeechResponse(fullResponse, taskResponse);
       } catch (error) {
         if (isNoSpeechDetectedError(error)) {
           responseData = buildEmptyRespondToSituationResponse();
