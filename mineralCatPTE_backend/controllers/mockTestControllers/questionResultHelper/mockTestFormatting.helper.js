@@ -37,7 +37,7 @@ const TASK_SUBTYPE_METADATA = {
   },
   respond_to_situation: {
     label: "Respond to a Situation",
-    communicativeSkills: ["listening", "speaking"],
+    communicativeSkills: ["speaking"],
   },
   answer_short_question: {
     label: "Answer Short Question",

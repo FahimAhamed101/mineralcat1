@@ -153,20 +153,15 @@ function buildRepeatSentenceAssessment(data = {}) {
 
 function buildRespondToSituationAssessment(data = {}) {
   const speakingScore = toNumber(data.speakingScore, 0);
-  const listeningScore = toNumber(
-    data.listeningScore,
-    toNumber(data.taskScore, speakingScore)
-  );
 
   return buildAssessment({
     questionType: "speaking",
     subtype: "respond_to_situation",
     title: "Respond to a Situation",
-    score: toNumber(data.taskScore, 0),
+    score: toNumber(data.taskScore, speakingScore),
     maxScore: 100,
     skills: [
       buildMetric({ key: "speaking", label: "Speaking", score: speakingScore, maxScore: 100, format: "percent" }),
-      buildMetric({ key: "listening", label: "Listening", score: listeningScore, maxScore: 100, format: "percent" }),
     ],
     traits: [
       buildMetric({ key: "appropriacy", label: "Appropriacy", score: toNumber(data.appropriacy, 0), maxScore: toNumber(data.traitScaleMax, 5) || 5 }),

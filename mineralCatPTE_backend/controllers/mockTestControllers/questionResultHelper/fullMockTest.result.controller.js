@@ -338,23 +338,25 @@ function toFivePointTraitScore(rawScore) {
     return null;
   }
 
+  const roundToTwoDecimals = (value) => Math.round(value * 100) / 100;
+
   if (numericRawScore <= 0) {
     return 0;
   }
 
   if (numericRawScore <= 5) {
-    return clamp(Math.round(numericRawScore), 0, 5);
+    return roundToTwoDecimals(clamp(numericRawScore, 0, 5));
   }
 
   if (numericRawScore <= 9) {
-    return clamp(Math.round((numericRawScore / 9) * 5), 0, 5);
+    return roundToTwoDecimals(clamp((numericRawScore / 9) * 5, 0, 5));
   }
 
   if (numericRawScore <= 90) {
-    return clamp(Math.round(((numericRawScore - 10) / 80) * 5), 0, 5);
+    return roundToTwoDecimals(clamp(((numericRawScore - 10) / 80) * 5, 0, 5));
   }
 
-  return clamp(Math.round((numericRawScore / 100) * 5), 0, 5);
+  return roundToTwoDecimals(clamp((numericRawScore / 100) * 5, 0, 5));
 }
 
 function mapScriptedSpeechResponse(fullResponse, expectedText, goodWordMin = 80) {
@@ -539,7 +541,7 @@ function hasMeaningfulSpeechTranscript(transcript = '') {
   return joinedMeaningfulTranscript.length >= 8;
 }
 
-function mapOpenEndedSpeechResponse(fullResponse, taskResponse = null) {
+function mapOpenEndedSpeechResponse(fullResponse, taskResponse = null, options = {}) {
   const speechScore = fullResponse?.speech_score || {};
   const pteScore = speechScore?.pte_score || {};
   const taskScoreData = taskResponse?.task_score || fullResponse?.task_score || {};
@@ -570,12 +572,19 @@ function mapOpenEndedSpeechResponse(fullResponse, taskResponse = null) {
       ) ?? 0
     : 0;
 
+  const taskAchievementScore = getFirstNumericValue(taskScoreData?.score);
+  const hasTaskAchievementScore = taskAchievementScore !== null;
+  const taskScoreScale = Number(options.taskScoreScale) === 5 ? 5 : 100;
+
   let appropriacy = 0;
   if (hasTranscript) {
-    const taskAchievementScore = getFirstNumericValue(taskScoreData?.score);
+    if (hasTaskAchievementScore) {
+      const normalizedTaskAchievementScore = clamp(taskAchievementScore, 0, taskScoreScale);
 
-    if (taskAchievementScore !== null) {
-      appropriacy = clamp(taskAchievementScore, 0, 5);
+      appropriacy =
+        taskScoreScale === 5
+          ? Math.round(normalizedTaskAchievementScore * 100) / 100
+          : Math.round(((normalizedTaskAchievementScore / 100) * 5) * 100) / 100;
     } else {
       const numericAppropriacy = getFirstNumericValue(
         speechScore?.relevance?.score,
@@ -610,18 +619,20 @@ function mapOpenEndedSpeechResponse(fullResponse, taskResponse = null) {
 
   const totalTraitScore = pronunciation + fluency + appropriacy;
   const taskScore = Math.round((totalTraitScore / 15) * 100);
-  const speakingScore = Math.round(
-    toNumber(
-      pteScore.overall,
-      average([
-        pteScore.pronunciation,
-        pteScore.fluency,
-        pteScore.grammar,
-        pteScore.coherence,
-        pteScore.vocab,
-      ])
-    )
-  );
+  const speakingScore = hasTaskAchievementScore
+    ? taskScore
+    : Math.round(
+        toNumber(
+          pteScore.overall,
+          average([
+            pteScore.pronunciation,
+            pteScore.fluency,
+            pteScore.grammar,
+            pteScore.coherence,
+            pteScore.vocab,
+          ])
+        )
+      );
 
   return {
     speakingScore,
@@ -636,6 +647,10 @@ function mapOpenEndedSpeechResponse(fullResponse, taskResponse = null) {
     predictedText,
     relevanceClass: relevanceClass || null,
     totalWords: wordScoreList.length,
+    taskScoreRaw: hasTaskAchievementScore ? taskAchievementScore : null,
+    taskScoreScale: hasTaskAchievementScore ? taskScoreScale : null,
+    taskScoreExplanation: taskScoreData?.score_explanation || null,
+    usedFallbackScoring: !hasTaskAchievementScore,
     ...buildWordCounts(wordScoreList),
   };
 }
@@ -743,10 +758,15 @@ async function speakingevaluateRepeatSentenceResult({ userId, questionId, userFi
   const question = await questionModel.findById(questionId);
   if (!question) throw new ExpressError(404, "Question Not Found!");
 
-  const expectedText = question.audioConvertedText;
-
   if (!userFilePath) {
     return buildEmptyRepeatSentenceResponse();
+  }
+
+  const expectedText = String(question.audioConvertedText || '').trim();
+
+  if (!expectedText) {
+    await safeDeleteFile(userFilePath);
+    throw new ExpressError(422, "Expected sentence text is missing for this Repeat Sentence question.");
   }
 
   let finalResponse;

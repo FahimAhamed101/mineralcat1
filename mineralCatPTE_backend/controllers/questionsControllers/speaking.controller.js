@@ -23,7 +23,10 @@ const {
     buildDescribeImageAssessment,
     buildRepeatSentenceAssessment,
 } = require("../../common/questionAssessment");
-const { scoreOpenEndedSpeech } = require("../../services/speechace.service");
+const {
+    scoreOpenEndedSpeech,
+    scoreTaskDescribeImage,
+} = require("../../services/speechace.service");
 const {
     mapOpenEndedSpeechResponse,
     speakingReadAloudResult,
@@ -812,12 +815,35 @@ module.exports.describeImageResult = asyncWrapper(async (req, res) => {
         let responseData;
 
         try {
+            const taskContext = String(question.prompt || '').trim();
+
             const speechResponse = await scoreOpenEndedSpeech({
                 audioFilePath: userFilePath,
-                relevanceContext: question.prompt || question.heading || "Describe the image in detail.",
+                relevanceContext: taskContext || question.heading || "Describe the image in detail.",
                 accent,
             });
-            responseData = mapOpenEndedSpeechResponse(speechResponse);
+
+            let taskResponse = null;
+
+            if (taskContext) {
+                try {
+                    taskResponse = await scoreTaskDescribeImage({
+                        audioFilePath: userFilePath,
+                        taskContext,
+                        taskQuestion: "Describe the image in detail.",
+                        accent,
+                    });
+                } catch (taskError) {
+                    console.warn(
+                        "SpeechAce Describe Image Score/Task failed, using fallback content scoring:",
+                        taskError?.message || taskError
+                    );
+                }
+            }
+
+            responseData = mapOpenEndedSpeechResponse(speechResponse, taskResponse, {
+                taskScoreScale: 5,
+            });
         } catch (error) {
             if (!isNoSpeechDetectedError(error)) {
                 throw error;
