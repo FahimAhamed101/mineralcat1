@@ -825,20 +825,32 @@ module.exports.describeImageResult = asyncWrapper(async (req, res) => {
 
             let taskResponse = null;
 
-            if (taskContext) {
-                try {
-                    taskResponse = await scoreTaskDescribeImage({
-                        audioFilePath: userFilePath,
-                        taskContext,
-                        taskQuestion: "Describe the image in detail.",
-                        accent,
-                    });
-                } catch (taskError) {
-                    console.warn(
-                        "SpeechAce Describe Image Score/Task failed, using fallback content scoring:",
-                        taskError?.message || taskError
-                    );
-                }
+            if (!taskContext) {
+                throw new ExpressError(422, "Describe Image scoring context is required.");
+            }
+
+            try {
+                taskResponse = await scoreTaskDescribeImage({
+                    audioFilePath: userFilePath,
+                    taskContext,
+                    taskQuestion: "Describe the image in detail.",
+                    accent,
+                });
+
+                console.log(
+                    "[Describe Image] SpeechAce Score/Task response:",
+                    JSON.stringify(taskResponse, null, 2)
+                );
+            } catch (taskError) {
+                console.error(
+                    "[Describe Image] SpeechAce Score/Task failed:",
+                    taskError?.message || taskError
+                );
+
+                throw new ExpressError(
+                    502,
+                    `SpeechAce Describe Image Score/Task failed: ${taskError?.message || taskError}`
+                );
             }
 
             responseData = mapOpenEndedSpeechResponse(speechResponse, taskResponse, {
