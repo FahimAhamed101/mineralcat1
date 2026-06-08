@@ -833,7 +833,6 @@ module.exports.describeImageResult = asyncWrapper(async (req, res) => {
                 taskResponse = await scoreTaskDescribeImage({
                     audioFilePath: userFilePath,
                     taskContext,
-                    taskQuestion: "Describe the image in detail.",
                     accent,
                 });
 

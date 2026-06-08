@@ -174,7 +174,6 @@ async function scoreTaskGeneral({
 async function scoreTaskDescribeImage({
   audioFilePath,
   taskContext,
-  taskQuestion = 'Describe the image in detail.',
   accent = 'us',
 }) {
   if (!audioFilePath) throw new ExpressError(400, 'Audio file path is required');
@@ -186,7 +185,6 @@ async function scoreTaskDescribeImage({
 
   const form = new FormData();
   form.append('task_context', normalizedTaskContext);
-  form.append('task_question', String(taskQuestion || 'Describe the image in detail.').trim());
   form.append('user_audio_file', fs.createReadStream(audioFilePath), {
     filename: path.basename(audioFilePath),
     contentType: getAudioMimeType(audioFilePath),
