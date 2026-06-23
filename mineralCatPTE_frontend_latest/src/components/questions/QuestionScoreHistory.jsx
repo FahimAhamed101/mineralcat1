@@ -28,6 +28,25 @@ function formatMetric(metric = {}) {
   return score;
 }
 
+function toDisplayOutOf90(metric = {}) {
+  const score = Number(metric?.score);
+  const maxScore = Number(metric?.maxScore);
+
+  if (!Number.isFinite(score) || score <= 0) return 0;
+  if (Number.isFinite(maxScore) && maxScore > 0) {
+    return Math.round((score / maxScore) * 90);
+  }
+
+  return Math.round(score);
+}
+
+function getMetricInitial(metric = {}) {
+  return String(metric?.label || metric?.key || "S")
+    .trim()
+    .charAt(0)
+    .toUpperCase();
+}
+
 function HistoryCard({ entry }) {
   const assessment = entry?.assessment || {};
   const skills = Array.isArray(assessment.skills) ? assessment.skills : [];
@@ -78,6 +97,44 @@ function HistoryCard({ entry }) {
           No speech detected for this attempt. All scores were recorded as 0.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function SpeakingHistoryCard({ entry }) {
+  const assessment = entry?.assessment || {};
+  const skills = Array.isArray(assessment.skills) ? assessment.skills : [];
+
+  return (
+    <div className="rounded-2xl border border-[#bdeff3] bg-white px-5 py-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#7a57c7] text-lg font-bold text-white">
+            Y
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-700">{entry?.timeLabel || "-"}</p>
+            <p className="text-xs text-gray-400">Previous AI score</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {skills.map((metric) => (
+            <div
+              key={metric?.key || metric?.label}
+              className="flex items-center gap-2 rounded-full border border-[#7be4ec] px-4 py-2 text-[#4fcad3]"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#7be4ec] bg-white text-sm font-bold">
+                {getMetricInitial(metric)}
+              </span>
+              <span className="text-lg font-bold">{toDisplayOutOf90(metric)}/90</span>
+            </div>
+          ))}
+          <div className="inline-flex items-center rounded-full bg-[#f5a267] px-4 py-2 text-sm font-semibold text-white">
+            AI Score
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -134,17 +191,23 @@ export default function QuestionScoreHistory() {
     return null;
   }
 
+  const isSpeakingHistory = routeContext.section === "speaking";
+
   return (
     <div className="w-full lg:max-w-[80%] mx-auto px-4 pb-8">
       <div className="rounded-[28px] bg-[#edfdfd] p-5">
         <div className="mb-5 text-center">
           <h2 className="inline-block border-b-2 border-[#f5a267] px-4 pb-2 text-3xl font-semibold text-[#f5a267]">
-            Score History
+            {isSpeakingHistory ? "My Score" : "Score History"}
           </h2>
         </div>
         <div className="space-y-4">
           {history.map((entry) => (
-            <HistoryCard key={entry?.id || entry?.createdAt} entry={entry} />
+            isSpeakingHistory ? (
+              <SpeakingHistoryCard key={entry?.id || entry?.createdAt} entry={entry} />
+            ) : (
+              <HistoryCard key={entry?.id || entry?.createdAt} entry={entry} />
+            )
           ))}
         </div>
       </div>

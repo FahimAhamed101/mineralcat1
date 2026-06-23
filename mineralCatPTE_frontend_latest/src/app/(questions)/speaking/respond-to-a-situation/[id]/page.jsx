@@ -485,7 +485,7 @@ export default function RespondToSituationPage({ params }) {
             <div className="bg-gradient-to-r from-[#7D0000] to-[#c0392b] px-6 py-4 flex items-center justify-between">
               <div>
                 <h2 className="text-white text-xl font-bold">Respond to a Situation - AI Score</h2>
-                <p className="text-white/75 text-sm mt-0.5">Styled to match Read Aloud</p>
+                <p className="text-white/75 text-sm mt-0.5">Powered by speech assessment AI</p>
               </div>
               <button
                 className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white font-bold transition"
@@ -497,6 +497,10 @@ export default function RespondToSituationPage({ params }) {
 
             {result?.success ? (
               <div className="p-6 space-y-6">
+                <div className="flex items-center justify-end">
+                  <p className="text-xs text-gray-400 font-medium">{getAssessmentMeta(assessment, "totalWords", 0)} words detected</p>
+                </div>
+
                 <div className="flex items-center justify-between gap-3 rounded-xl border border-[#f5c6c6] bg-[#fff5f5] px-4 py-3">
                   <p className="text-sm font-bold text-[#810000]">AI Score</p>
                   <div className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${

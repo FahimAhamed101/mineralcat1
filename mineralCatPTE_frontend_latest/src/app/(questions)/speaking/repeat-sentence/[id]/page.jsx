@@ -156,7 +156,7 @@ function ResultModal({ isOpen, onClose, serverResponse }) {
         <div className="bg-gradient-to-r from-[#7D0000] to-[#c0392b] px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-white text-xl font-bold">Repeat Sentence - AI Score</h2>
-            <p className="text-white/75 text-sm mt-0.5">Same scoring layout as Read Aloud</p>
+            <p className="text-white/75 text-sm mt-0.5">Powered by speech assessment AI</p>
           </div>
           <button
             onClick={onClose}
@@ -167,6 +167,10 @@ function ResultModal({ isOpen, onClose, serverResponse }) {
         </div>
 
         <div className="p-6 space-y-6">
+          <div className="flex items-center justify-end">
+            <p className="text-xs text-gray-400 font-medium">{scoreData.totalWords} words detected</p>
+          </div>
+
           <div className="flex items-center justify-between gap-3 rounded-xl border border-[#f5c6c6] bg-[#fff5f5] px-4 py-3">
             <p className="text-sm font-bold text-[#810000]">AI Score</p>
             <div

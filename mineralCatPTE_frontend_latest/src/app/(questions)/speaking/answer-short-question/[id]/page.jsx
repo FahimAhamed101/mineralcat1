@@ -11,6 +11,7 @@ import MicRecorder from "mic-recorder-to-mp3";
 
 const RECORD_SECONDS = 10;
 const AUDIO_DURATION = 35;
+const DISPLAY_SCORE_MAX = 90;
 
 function getAnswerShortQuestionResultData(serverResponse) {
   const assessment = getQuestionAssessment(serverResponse, "answer_short_question");
@@ -27,7 +28,7 @@ function getAnswerShortQuestionResultData(serverResponse) {
   };
 }
 
-function ScoreGauge({ value, max = 1, label, color = "#810000", footer = "" }) {
+function ScoreGauge({ value, max = DISPLAY_SCORE_MAX, label, color = "#810000", footer = "" }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100));
   const r = 28;
   const circ = 2 * Math.PI * r;
@@ -50,7 +51,7 @@ function ScoreGauge({ value, max = 1, label, color = "#810000", footer = "" }) {
           style={{ transition: "stroke-dasharray 0.8s cubic-bezier(.4,0,.2,1)" }}
         />
         <text x="36" y="40" textAnchor="middle" fontSize="13" fontWeight="700" fill={color}>
-          {Number(value).toFixed(0)}
+          {Math.round(value)}
         </text>
       </svg>
       <span className="text-xs font-semibold text-gray-600 text-center leading-tight">{label}</span>
@@ -59,21 +60,14 @@ function ScoreGauge({ value, max = 1, label, color = "#810000", footer = "" }) {
   );
 }
 
-function EnablingSkillRow({ label, value, isYesNo = false }) {
+function toDisplayOutOf90FromMax(value, max = 1) {
   const numericValue = Number(value);
-  const isAffirmative = String(value || "").toUpperCase() === "YES";
-  const barWidth = isYesNo ? (isAffirmative ? "100%" : "10%") : `${Math.min(100, Math.max(0, numericValue * 100))}%`;
-  const displayValue = isYesNo ? (isAffirmative ? "Yes" : "No") : `${numericValue.toFixed(0)}/1`;
+  const numericMax = Number(max);
 
-  return (
-    <div className="grid grid-cols-[120px_1fr_70px] items-center gap-4">
-      <p className="text-sm font-medium text-[#3A3128]">{label}</p>
-      <div className="h-2 rounded-full bg-white/70 overflow-hidden">
-        <div className="h-2 rounded-full bg-[#1ec7c3]" style={{ width: barWidth }} />
-      </div>
-      <p className="text-sm text-right text-[#3A3128]">{displayValue}</p>
-    </div>
-  );
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return 0;
+  if (!Number.isFinite(numericMax) || numericMax <= 0) return Math.round(numericValue);
+
+  return Math.round((numericValue / numericMax) * DISPLAY_SCORE_MAX);
 }
 
 function ResultModal({ isOpen, onClose, serverResponse, question }) {
@@ -91,6 +85,15 @@ function ResultModal({ isOpen, onClose, serverResponse, question }) {
   const expectedAnswer = scoreData.correctText || question?.correctText || "Not provided";
   const recognizedAnswer = scoreData.predictedText || "No speech detected";
   const isCorrect = Boolean(scoreData.matchedExpectedAnswer || scoreData.speakingScore >= 1);
+  const speakingDisplayScore = toDisplayOutOf90FromMax(scoreData.speakingScore, 1);
+  const listeningDisplayScore = toDisplayOutOf90FromMax(scoreData.listeningScore, 1);
+  const contentDisplayScore =
+    String(scoreData.enablingSkills || "").toUpperCase() === "YES" ? DISPLAY_SCORE_MAX : 0;
+  const fluencyDisplayScore = toDisplayOutOf90FromMax(scoreData.fluency, 1);
+  const pronunciationDisplayScore = toDisplayOutOf90FromMax(scoreData.pronunciation, 1);
+  const totalWords = recognizedAnswer === "No speech detected"
+    ? 0
+    : recognizedAnswer.split(/\s+/).filter(Boolean).length;
 
   return (
     <div
@@ -105,7 +108,7 @@ function ResultModal({ isOpen, onClose, serverResponse, question }) {
         <div className="bg-gradient-to-r from-[#7D0000] to-[#c0392b] px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-white text-xl font-bold">Answer Short Question - AI Score</h2>
-            <p className="text-white/75 text-sm mt-0.5">Scored against the accepted answers list</p>
+            <p className="text-white/75 text-sm mt-0.5">Powered by speech assessment AI</p>
           </div>
           <button
             onClick={onClose}
@@ -116,35 +119,8 @@ function ResultModal({ isOpen, onClose, serverResponse, question }) {
         </div>
 
         <div className="p-6 space-y-6">
-          <div>
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <p className="text-sm font-bold text-gray-700 uppercase tracking-wide">
-                Answer Check
-              </p>
-              <div
-                className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${
-                  isCorrect ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                }`}
-              >
-                {isCorrect ? "Correct" : "Incorrect"}
-              </div>
-            </div>
-
-            <div className="grid gap-4">
-              <div className="rounded-xl border border-[#d7ece0] bg-[#fbfffc] p-4">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
-                  Accepted Answers
-                </p>
-                <p className="text-[15px] leading-7 text-gray-800">{expectedAnswer}</p>
-              </div>
-
-              <div className="rounded-xl border border-[#f5c6c6] bg-[#fff5f5] p-4">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
-                  Recognized Answer
-                </p>
-                <p className="text-[15px] leading-7 text-gray-800">{recognizedAnswer}</p>
-              </div>
-            </div>
+          <div className="flex items-center justify-end">
+            <p className="text-xs text-gray-400 font-medium">{totalWords} words detected</p>
           </div>
 
           <div className="flex items-center justify-between gap-3 rounded-xl border border-[#f5c6c6] bg-[#fff5f5] px-4 py-3">
@@ -165,20 +141,18 @@ function ResultModal({ isOpen, onClose, serverResponse, question }) {
             <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-xl p-4">
               <div className="flex flex-col items-center gap-1 bg-white rounded-lg p-3 shadow-sm">
                 <ScoreGauge
-                  value={scoreData.speakingScore}
-                  max={1}
+                  value={speakingDisplayScore}
                   label="Speaking"
                   color="#810000"
-                  footer="Out of 1"
+                  footer="Out of 90"
                 />
               </div>
               <div className="flex flex-col items-center gap-1 bg-white rounded-lg p-3 shadow-sm">
                 <ScoreGauge
-                  value={scoreData.listeningScore}
-                  max={1}
+                  value={listeningDisplayScore}
                   label="Listening"
                   color="#c0392b"
-                  footer="Out of 1"
+                  footer="Out of 90"
                 />
               </div>
             </div>
@@ -188,20 +162,54 @@ function ResultModal({ isOpen, onClose, serverResponse, question }) {
             <p className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">
               Enabling Skills
             </p>
-            <div className="overflow-hidden rounded-2xl border border-[#61dff2]">
-              <div className="bg-[#55c7cb] px-4 py-2 text-center text-white font-semibold">
-                Enabling Skills
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-blue-50 rounded-xl p-3 text-center">
+                <p className="text-xl font-black text-blue-700">
+                  {contentDisplayScore}
+                  <span className="text-sm font-medium">/90</span>
+                </p>
+                <p className="text-xs font-semibold text-blue-600 mt-0.5">Content</p>
               </div>
-              <div className="space-y-4 bg-[#f5ffff] px-5 py-5">
-                <EnablingSkillRow label="Content" value={scoreData.enablingSkills} isYesNo />
-                <EnablingSkillRow label="Fluency" value={scoreData.fluency} />
-                <EnablingSkillRow label="Pronunciation" value={scoreData.pronunciation} />
+              <div className="bg-purple-50 rounded-xl p-3 text-center">
+                <p className="text-xl font-black text-purple-700">
+                  {fluencyDisplayScore}
+                  <span className="text-sm font-medium">/90</span>
+                </p>
+                <p className="text-xs font-semibold text-purple-600 mt-0.5">Fluency</p>
+              </div>
+              <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                <p className="text-xl font-black text-emerald-700">
+                  {pronunciationDisplayScore}
+                  <span className="text-sm font-medium">/90</span>
+                </p>
+                <p className="text-xs font-semibold text-emerald-600 mt-0.5">Pronunciation</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">
+              Answer Check
+            </p>
+            <div className="grid gap-4">
+              <div className="rounded-xl border border-[#d7ece0] bg-[#fbfffc] p-4">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                  Accepted Answers
+                </p>
+                <p className="text-[15px] leading-7 text-gray-800">{expectedAnswer}</p>
+              </div>
+
+              <div className="rounded-xl border border-[#f5c6c6] bg-[#fff5f5] p-4">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                  Recognized Answer
+                </p>
+                <p className="text-[15px] leading-7 text-gray-800">{recognizedAnswer}</p>
               </div>
             </div>
           </div>
 
           <div className="bg-[#fffbea] border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
-            <p className="font-bold mb-1">Evaluation rule</p>
+            <p className="font-bold mb-1">Tips to improve</p>
             <p>
               This task uses transcript matching against the accepted answers list. A matching
               accepted answer or synonym scores 1; wrong, empty, unclear, or irrelevant answers score 0.
