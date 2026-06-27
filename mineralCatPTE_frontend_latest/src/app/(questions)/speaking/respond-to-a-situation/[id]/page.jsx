@@ -6,6 +6,7 @@ import {
   getAssessmentTrait,
   getQuestionAssessment,
 } from "@/lib/questionAssessment";
+import TranscriptAnalysis from "@/components/questions/speaking/TranscriptAnalysis";
 import MicRecorder from "mic-recorder-to-mp3";
 
 // Constants
@@ -397,6 +398,14 @@ export default function RespondToSituationPage({ params }) {
         Respond appropriately and as clearly as you can.
       </p>
 
+      {(question.heading || question._id) ? (
+        <div className="bg-[#810000] text-white px-5 py-2 rounded mb-4 text-lg font-semibold tracking-wide flex flex-wrap md:flex-nowrap items-center gap-2">
+          <span>#{question._id}</span>
+          <span>|</span>
+          <span>{question.heading || "Respond to a Situation"}</span>
+        </div>
+      ) : null}
+
       {/* Audio Player */}
       <div className="border border-[#810000] rounded p-4 mb-4 bg-[#faf9f9] flex flex-col items-center">
         {audioSrc ? (
@@ -564,12 +573,12 @@ export default function RespondToSituationPage({ params }) {
                   </div>
                 </div>
 
-                {predictedText ? (
-                  <div className="rounded-xl border border-[#d7ece0] bg-[#fbfffc] p-4">
-                    <p className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">Transcript</p>
-                    <p className="text-[15px] leading-7 text-gray-800 whitespace-pre-line">{predictedText}</p>
-                  </div>
-                ) : null}
+                <TranscriptAnalysis
+                  transcript={predictedText}
+                  goodWords={goodWords}
+                  averageWords={averageWords}
+                  badWords={badWords}
+                />
 
                 <div className="bg-[#fffbea] border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
                   <p className="font-bold mb-1">Score formula</p>

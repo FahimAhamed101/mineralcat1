@@ -10,7 +10,6 @@ import {
 import MicRecorder from "mic-recorder-to-mp3";
 
 const RECORD_SECONDS = 10;
-const AUDIO_DURATION = 35;
 const DISPLAY_SCORE_MAX = 90;
 
 function getAnswerShortQuestionResultData(serverResponse) {
@@ -243,7 +242,6 @@ export default function AnswerShortQuestionPage({ params }) {
   const [timeLeft, setTimeLeft] = useState(RECORD_SECONDS);
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
-  const [audioProgress, setAudioProgress] = useState(0);
   const [audioPlaying, setAudioPlaying] = useState(false);
 
   const timerRef = useRef();
@@ -262,7 +260,6 @@ export default function AnswerShortQuestionPage({ params }) {
       }
       setLoading(false);
       setTimeLeft(RECORD_SECONDS);
-      setAudioProgress(0);
       setAudioBlob(null);
       setIsRecording(false);
     }
@@ -282,34 +279,6 @@ export default function AnswerShortQuestionPage({ params }) {
     timerRef.current = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
     return () => clearTimeout(timerRef.current);
   }, [isRecording, timeLeft]);
-
-  useEffect(() => {
-    if (!audioPlaying) return;
-
-    const handler = setInterval(() => {
-      if (!audioRef.current) return;
-      if (audioRef.current.ended || audioRef.current.paused) {
-        setAudioPlaying(false);
-        clearInterval(handler);
-      } else {
-        setAudioProgress(audioRef.current.currentTime);
-      }
-    }, 100);
-
-    return () => clearInterval(handler);
-  }, [audioPlaying]);
-
-  const handleAudioPlayPause = () => {
-    if (!audioRef.current) return;
-
-    if (audioPlaying) {
-      audioRef.current.pause();
-      setAudioPlaying(false);
-    } else {
-      audioRef.current.play();
-      setAudioPlaying(true);
-    }
-  };
 
   const startRecording = async () => {
     try {
@@ -397,47 +366,22 @@ export default function AnswerShortQuestionPage({ params }) {
       </div>
 
       <div className="border border-[#810000] rounded p-4 mb-4 bg-[#faf9f9] flex flex-col items-center">
-        <div className="w-full flex items-center gap-2">
-          <button
-            className="w-12 h-12 rounded-full flex items-center justify-center shadow bg-[#810000] text-white hover:bg-[#5d0000] mr-3"
-            onClick={handleAudioPlayPause}
-            aria-label={audioPlaying ? "Pause audio" : "Play audio"}
-            style={{ minWidth: 48 }}
-          >
-            {audioPlaying ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24">
-                <rect x="6" y="5" width="4" height="14" fill="currentColor" />
-                <rect x="14" y="5" width="4" height="14" fill="currentColor" />
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M8 5v14l11-7L8 5Z" />
-              </svg>
-            )}
-          </button>
+        {question.audioUrl ? (
           <audio
             ref={audioRef}
             src={question.audioUrl || ""}
-            preload="auto"
-            style={{ display: "none" }}
+            preload="metadata"
+            controls
+            style={{ width: "100%" }}
             onEnded={() => setAudioPlaying(false)}
             onPause={() => setAudioPlaying(false)}
             onPlay={() => setAudioPlaying(true)}
           />
-          <span className="text-xs text-gray-600">{audioProgress.toFixed(2).padStart(4, "0")}</span>
-          <div className="flex-1 h-2 rounded bg-gray-200 overflow-hidden relative">
-            <div
-              className="h-2 rounded bg-[#810000] transition-all duration-200"
-              style={{ width: `${((audioProgress || 0) / AUDIO_DURATION) * 100}%` }}
-            />
-          </div>
-          <span className="text-xs text-gray-600">{AUDIO_DURATION.toFixed(2)}</span>
-          <span className="ml-2">
-            <svg width="22" height="22" fill="#810000" viewBox="0 0 24 24">
-              <path d="M17 7v10M21 9v6M13 5v14M9 7v10M5 9v6" />
-            </svg>
-          </span>
-        </div>
+        ) : (
+          <p className="text-sm font-medium text-gray-500">
+            Audio prompt is missing for this question.
+          </p>
+        )}
       </div>
 
       <div className="border border-[#810000] rounded-lg bg-[#faf9f9] p-5 mb-6">

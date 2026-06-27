@@ -424,6 +424,14 @@ export default function RepeatSentencePage({ params }) {
         Repeat the sentence as accurately as possible.
       </p>
 
+      {(question.heading || question._id) ? (
+        <div className="bg-[#810000] text-white px-5 py-2 rounded mb-4 text-lg font-semibold tracking-wide flex flex-wrap md:flex-nowrap items-center gap-2">
+          <span>#{question._id}</span>
+          <span>|</span>
+          <span>{question.heading || "Repeat Sentence"}</span>
+        </div>
+      ) : null}
+
       <div className="border border-[#810000] rounded p-4 mb-4 bg-[#faf9f9] flex flex-col items-center">
         {question.audioUrl && (
           <audio
@@ -435,10 +443,6 @@ export default function RepeatSentencePage({ params }) {
             style={{ width: "100%" }}
           />
         )}
-      </div>
-
-      <div className="border border-[#810000] rounded p-4 mb-4 bg-white text-gray-900 whitespace-pre-line min-h-[34px]">
-        {question.prompt}
       </div>
 
       <div className="border border-[#810000] rounded-lg bg-[#faf9f9] p-5 mb-6">

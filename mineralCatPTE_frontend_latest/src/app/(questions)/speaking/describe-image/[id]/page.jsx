@@ -6,6 +6,7 @@ import {
   getAssessmentTrait,
   getQuestionAssessment,
 } from "@/lib/questionAssessment";
+import TranscriptAnalysis from "@/components/questions/speaking/TranscriptAnalysis";
 import MicRecorder from "mic-recorder-to-mp3";
 
 const RECORD_SECONDS = 40;
@@ -232,12 +233,6 @@ export default function DescribeImageQuestionPage({ params }) {
         )}
       </div>
 
-      {question.prompt ? (
-        <div className="border border-[#810000] rounded p-4 mb-4 bg-white text-gray-900 whitespace-pre-line">
-          {question.prompt}
-        </div>
-      ) : null}
-
       <div className="border border-[#810000] rounded-lg bg-[#faf9f9] p-5 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <span className="text-xs text-gray-500 w-10 text-right">{fmt(elapsed)}</span>
@@ -390,16 +385,12 @@ export default function DescribeImageQuestionPage({ params }) {
                   </div>
                 </div>
 
-                {predictedText ? (
-                  <div className="rounded-xl border border-[#d7ece0] bg-[#fbfffc] p-4">
-                    <p className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2">
-                      Transcript
-                    </p>
-                    <p className="text-[15px] leading-7 text-gray-800 whitespace-pre-line">
-                      {predictedText}
-                    </p>
-                  </div>
-                ) : null}
+                <TranscriptAnalysis
+                  transcript={predictedText}
+                  goodWords={goodWords}
+                  averageWords={averageWords}
+                  badWords={badWords}
+                />
 
                 <div className="bg-[#fffbea] border border-yellow-200 rounded-xl p-4 text-sm text-yellow-800">
                   <p className="font-bold mb-1">Score formula</p>
