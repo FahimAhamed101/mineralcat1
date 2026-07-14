@@ -303,8 +303,10 @@ Return valid JSON only in exactly this shape:
                     content: prompt
                 }
             ],
-            max_tokens: 500,
+            reasoning_effort: "none",
             temperature: 0.2,
+            max_completion_tokens: 500,
+            response_format: { type: "json_object" },
         });
 
         const gptResult = gptResponse.choices[0].message.content;
@@ -559,8 +561,10 @@ Return valid JSON only in exactly this shape:
                 content: prompt
             }
         ],
-        max_tokens: 500,
+        reasoning_effort: "none",
         temperature: 0.2,
+        max_completion_tokens: 500,
+        response_format: { type: "json_object" },
     });
 
     const gptResult = gptResponse.choices[0].message.content;

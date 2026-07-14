@@ -173,8 +173,10 @@ Return valid JSON only in this exact shape:
                 { role: "system", content: "You are an expert assessor for PTE Core summarize spoken text responses. Reply with valid JSON only." },
                 { role: "user", content: prompt }
             ],
+            reasoning_effort: "none",
             temperature: 0.3,
-            max_tokens: 500
+            max_completion_tokens: 500,
+            response_format: { type: "json_object" }
         });
 
         return enforceSummarizeSpokenTextScore(

@@ -15,6 +15,7 @@ const {
 const cloudinary = require('../../middleware/cloudinary.config');
 const path = require('path');
 const { asyncWrapper } = require("../../utils/AsyncWrapper");
+const { OpenAI } = require('openai');
 const fsPromises = require('fs').promises;
 const practicedModel = require("../../models/practiced.model");
 const { getQuestionByQuery } = require("../../common/getQuestionFunction");
@@ -34,6 +35,10 @@ const {
     speakingrespondToASituationResult,
 } = require("../mockTestControllers/questionResultHelper/fullMockTest.result.controller");
 const { storeAudioFile } = require("../../services/gridfsAudio.service");
+
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+});
 
 
 function getSpeechAceTranscript(fullResponse) {
@@ -1177,8 +1182,10 @@ Please provide the following result in this format and Format your response as J
                 { role: "system", content: "You are an expert language assessor evaluating user responses based on several criteria." },
                 { role: "user", content: prompt }
             ],
+            reasoning_effort: "none",
             temperature: 0.3,
-            max_tokens: 500
+            max_completion_tokens: 500,
+            response_format: { type: "json_object" }
         });
         const parsedResult = extractJsonObject(response.choices[0].message.content);
         normalizedResponse = normalizeAnswerShortQuestionScores(parsedResult);
