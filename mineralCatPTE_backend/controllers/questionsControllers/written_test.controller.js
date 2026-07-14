@@ -292,7 +292,7 @@ Return valid JSON only in exactly this shape:
 
     try {
         const gptResponse = await openai.chat.completions.create({
-            model: 'gpt-4',
+            model: 'gpt-5.4-mini',
             messages: [
                 {
                     role: "system",
@@ -548,7 +548,7 @@ Return valid JSON only in exactly this shape:
 `;
 
     const gptResponse = await openai.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-5.4-mini',
         messages: [
             {
                 role: "system",

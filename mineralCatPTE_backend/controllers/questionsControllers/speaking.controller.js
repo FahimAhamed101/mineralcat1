@@ -1172,7 +1172,7 @@ Please provide the following result in this format and Format your response as J
 `;
 
         const response = await openai.chat.completions.create({
-            model: "gpt-4",
+            model: "gpt-5.4-mini",
             messages: [
                 { role: "system", content: "You are an expert language assessor evaluating user responses based on several criteria." },
                 { role: "user", content: prompt }

@@ -168,7 +168,7 @@ Return valid JSON only in this exact shape:
 `;
 
         const response = await openai.chat.completions.create({
-            model: "gpt-4",
+            model: "gpt-5.4-mini",
             messages: [
                 { role: "system", content: "You are an expert assessor for PTE Core summarize spoken text responses. Reply with valid JSON only." },
                 { role: "user", content: prompt }
